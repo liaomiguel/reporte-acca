@@ -391,7 +391,7 @@ function setupEventListeners() {
       return;
     }
     
-    // Map to export format
+    // Map to export format (excluding Porcentaje column)
     const exportData = courses.map(c => ({
       "Código Curso": c.code,
       "Tipo": c.tipo,
@@ -400,8 +400,7 @@ function setupEventListeners() {
       "Fecha": c.fecha,
       "Modalidad": c.modalidad,
       "Profesor": c.profesor,
-      "Alumnos": c.count,
-      "Porcentaje": `${((c.count / total) * 100).toFixed(1)}%`
+      "Alumnos": c.count
     }));
     
     exportToCsv('resumen_alumnos_por_curso.csv', exportData);
@@ -1114,14 +1113,13 @@ function renderGeneralSummaryTable() {
   const total = state.filteredRecords.length;
   
   if (coursesArray.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="9" class="text-center text-muted py-4">No hay datos que coincidan con los filtros seleccionados.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted py-4">No hay datos que coincidan con los filtros seleccionados.</td></tr>`;
     return;
   }
   
-  // Render table rows
+  // Render table rows (excluding Porcentaje column)
   tbody.innerHTML = '';
   coursesArray.forEach(course => {
-    const percentage = total > 0 ? ((course.count / total) * 100).toFixed(1) : '0.0';
     tbody.innerHTML += `
       <tr>
         <td><code class="date-badge">${course.code}</code></td>
@@ -1132,7 +1130,6 @@ function renderGeneralSummaryTable() {
         <td>${course.modalidad}</td>
         <td>${course.profesor}</td>
         <td><strong>${course.count}</strong></td>
-        <td><span class="date-badge">${percentage}%</span></td>
       </tr>
     `;
   });
