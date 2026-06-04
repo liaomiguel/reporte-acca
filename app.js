@@ -1,0 +1,1381 @@
+/**
+ * ACCA Student Dashboard - Core Application Logic
+ * Implements CSV loading, strict date filtering (>= 2026-06-06),
+ * pre-built analytical charts, drag-and-drop pivot builder, and table explorer.
+ */
+
+// Application State
+const state = {
+  rawCsvText: '',
+  rawBuffer: null,
+  encoding: 'UTF-8',
+  startDateFilter: '2026-06-06',
+  records: [],         // All parsed records (sanitized)
+  filteredRecords: [], // Filtered records (Fecha >= startDateFilter)
+  
+  // Charts
+  charts: {
+    cursos: null,
+    niveles: null,
+    profesorFecha: null,
+    builder: null
+  },
+  
+  // Builder Configuration
+  builder: {
+    xField: null,
+    legendField: null,
+    chartType: 'bar'
+  },
+  
+  // Table Explorer Configuration
+  explorer: {
+    search: '',
+    filterNivel: 'all',
+    filterProfesor: 'all',
+    sortBy: 'Fecha',
+    sortDir: 'desc',
+    page: 1,
+    pageSize: 15
+  }
+};
+
+// Available fields translation map for user display in builder
+const fieldDisplayNames = {
+  'Código': 'Código Curso',
+  'Nivel': 'Nivel',
+  'Profesor': 'Profesor',
+  'Fecha': 'Fecha',
+  'Mes': 'Mes',
+  'Tipo': 'Tipo',
+  'Día': 'Día',
+  'Modalidad': 'Modalidad',
+  'Horario': 'Horario'
+};
+
+// Theme color palette for charts (Harmonious, premium glowing dark colors)
+const chartColors = [
+  'rgba(92, 98, 245, 0.85)',   // Indigo Glow
+  'rgba(157, 78, 221, 0.85)',  // Purple Glow
+  'rgba(16, 185, 129, 0.85)',  // Emerald Green
+  'rgba(245, 158, 11, 0.85)',  // Amber Orange
+  'rgba(6, 182, 212, 0.85)',   // Cyan Accent
+  'rgba(236, 72, 153, 0.85)',  // Pink Accent
+  'rgba(244, 63, 94, 0.85)',   // Rose Red
+  'rgba(99, 102, 241, 0.85)',  // Light Indigo
+  'rgba(168, 85, 247, 0.85)',  // Violet
+  'rgba(34, 197, 94, 0.85)',   // Green
+  'rgba(234, 179, 8, 0.85)',   // Yellow
+  'rgba(14, 165, 233, 0.85)'   // Sky Blue
+];
+
+const chartBorderColors = [
+  '#5c62f5', '#9d4edd', '#10b981', '#f59e0b', '#06b6d4', '#ec4899', '#f43f5e', '#6366f1', '#a855f7', '#22c55e', '#eab308', '#0ea5e9'
+];
+
+// Register Chart.js DataLabels plugin globally if available
+if (typeof ChartDataLabels !== 'undefined') {
+  Chart.register(ChartDataLabels);
+}
+
+// Initialize application on load
+window.addEventListener('DOMContentLoaded', () => {
+  initLucide();
+  setupTabNavigation();
+  setupEventListeners();
+  loadDataAutomatically();
+});
+
+// Setup Lucide Icons
+function initLucide() {
+  if (typeof lucide !== 'undefined') {
+    lucide.createIcons();
+  }
+}
+
+// Setup Header & Sidebar Tab Navigation
+function setupTabNavigation() {
+  const tabs = document.querySelectorAll('.nav-btn');
+  const panels = document.querySelectorAll('.tab-panel');
+  const pageTitle = document.getElementById('page-title');
+  const pageSubtitle = document.getElementById('page-subtitle');
+  
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      // Remove active from all tabs
+      tabs.forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      
+      // Show matching panel
+      const targetTab = tab.getAttribute('data-tab');
+      panels.forEach(panel => {
+        panel.classList.remove('active');
+        if (panel.id === `panel-${targetTab}`) {
+          panel.classList.add('active');
+        }
+      });
+      
+      // Update page title/subtitle
+      if (targetTab === 'general') {
+        pageTitle.textContent = 'Resumen General';
+        pageSubtitle.textContent = 'Análisis de inscripciones y distribución de alumnos a partir del 6 de Junio de 2026';
+      } else if (targetTab === 'builder') {
+        pageTitle.textContent = 'Constructor Pivot';
+        pageSubtitle.textContent = 'Arrastra campos para cruzar variables, contar alumnos y generar reportes dinámicos';
+        // Resize Chart.js if visible to redraw correctly
+        if (state.charts.builder) {
+          state.charts.builder.resize();
+        }
+      } else if (targetTab === 'explorer') {
+        pageTitle.textContent = 'Explorador de Datos';
+        pageSubtitle.textContent = 'Listado y búsqueda de todos los alumnos registrados (Filtrado para fechas ≥ 06/06/2026)';
+      }
+    });
+  });
+}
+
+// Main setup for UI interactive listeners
+function setupEventListeners() {
+  // Reload Button
+  document.getElementById('btn-reload-file').addEventListener('click', () => {
+    loadDataAutomatically();
+  });
+
+  // Import CSV Button in header
+  document.getElementById('btn-import-csv').addEventListener('click', () => {
+    document.getElementById('csv-file-input').click();
+  });
+
+  // Date Filter Picker Change
+  document.getElementById('filter-date-input').addEventListener('change', (e) => {
+    state.startDateFilter = e.target.value;
+    
+    // Update sidebar display
+    const parts = state.startDateFilter.split('-');
+    const formattedDate = parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : state.startDateFilter;
+    document.getElementById('status-filter-date').textContent = `≥ ${formattedDate}`;
+    
+    // Re-filter and update
+    filterAndRefreshData();
+  });
+  
+  // Encoding Select change
+  document.getElementById('encoding-select').addEventListener('click', (e) => {
+    e.stopPropagation(); // Avoid dropdown glitch
+  });
+  document.getElementById('encoding-select').addEventListener('change', (e) => {
+    state.encoding = e.target.value;
+    if (state.rawBuffer) {
+      decodeAndProcessCsv(state.rawBuffer);
+    } else {
+      loadDataAutomatically();
+    }
+  });
+
+  // Limit count selector for Courses Chart
+  document.getElementById('course-limit-select').addEventListener('change', () => {
+    renderCursosChart();
+  });
+  
+  // Teacher selector filter for general trends chart
+  document.getElementById('teacher-filter-select').addEventListener('change', () => {
+    renderProfesorFechaChart();
+  });
+
+  // Trigger file selection manual click
+  document.getElementById('btn-trigger-upload').addEventListener('click', () => {
+    document.getElementById('csv-file-input').click();
+  });
+
+  // Manual File Select Change
+  document.getElementById('csv-file-input').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      readLocalFile(file);
+    }
+  });
+
+  // Setup Drag & Drop files on upload zone
+  const uploadZone = document.getElementById('upload-zone');
+  uploadZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    uploadZone.classList.add('drag-over');
+  });
+
+  uploadZone.addEventListener('dragleave', () => {
+    uploadZone.classList.remove('drag-over');
+  });
+
+  uploadZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    uploadZone.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file && file.name.endsWith('.csv')) {
+      readLocalFile(file);
+    } else {
+      alert('Por favor, selecciona un archivo con extensión .csv');
+    }
+  });
+
+  // Setup Drag & Drop Builder fields listeners
+  setupDragAndDropBuilder();
+
+  // Explorer search input listener
+  document.getElementById('explorer-search').addEventListener('input', (e) => {
+    state.explorer.search = e.target.value;
+    state.explorer.page = 1; // reset page
+    updateExplorerTable();
+  });
+
+  // Explorer filter dropdowns
+  document.getElementById('filter-nivel-select').addEventListener('change', (e) => {
+    state.explorer.filterNivel = e.target.value;
+    state.explorer.page = 1;
+    updateExplorerTable();
+  });
+
+  document.getElementById('filter-profesor-select').addEventListener('change', (e) => {
+    state.explorer.filterProfesor = e.target.value;
+    state.explorer.page = 1;
+    updateExplorerTable();
+  });
+
+  // Explorer sorting
+  const headers = document.querySelectorAll('#table-explorer th[data-sort]');
+  headers.forEach(header => {
+    header.addEventListener('click', () => {
+      const field = header.getAttribute('data-sort');
+      if (state.explorer.sortBy === field) {
+        // Toggle direction
+        state.explorer.sortDir = state.explorer.sortDir === 'asc' ? 'desc' : 'asc';
+      } else {
+        state.explorer.sortBy = field;
+        state.explorer.sortDir = 'asc';
+      }
+      
+      // Update sorted arrow displays
+      headers.forEach(h => {
+        const icon = h.querySelector('.sort-icon');
+        if (h === header) {
+          icon.setAttribute('data-lucide', state.explorer.sortDir === 'asc' ? 'chevron-up' : 'chevron-down');
+        } else {
+          icon.setAttribute('data-lucide', 'chevrons-up-down');
+        }
+      });
+      initLucide();
+      
+      updateExplorerTable();
+    });
+  });
+
+  // Pagination buttons
+  document.getElementById('pag-prev').addEventListener('click', () => {
+    if (state.explorer.page > 1) {
+      state.explorer.page--;
+      updateExplorerTable();
+    }
+  });
+
+  document.getElementById('pag-next').addEventListener('click', () => {
+    const totalPages = Math.ceil(getFilteredExplorerRecords().length / state.explorer.pageSize);
+    if (state.explorer.page < totalPages) {
+      state.explorer.page++;
+      updateExplorerTable();
+    }
+  });
+
+  // Export buttons
+  document.getElementById('btn-export-explorer').addEventListener('click', () => {
+    exportToCsv('explorador_acca_filtrado.csv', getFilteredExplorerRecords());
+  });
+
+  document.getElementById('btn-export-builder').addEventListener('click', () => {
+    exportBuilderPivotData();
+  });
+}
+
+// Fetch CSV automatically from workspace folder
+async function loadDataAutomatically() {
+  updateStatus('pulse yellow', 'Intentando cargar CSV...');
+  try {
+    // Vite will serve files in workspace directory
+    const response = await fetch('./Alumnos-Acca.csv');
+    if (!response.ok) {
+      throw new Error(`HTTP error ${response.status}`);
+    }
+    
+    // We fetch as ArrayBuffer first to support multiple encodings
+    const arrayBuffer = await response.arrayBuffer();
+    decodeAndProcessCsv(arrayBuffer);
+    
+    // Hide upload zone as automatic load succeeded
+    document.getElementById('upload-zone').classList.add('hidden');
+    updateStatus('green pulse', 'Carga automática completada');
+  } catch (error) {
+    console.warn("Could not load CSV automatically:", error);
+    // Show manual upload zone
+    document.getElementById('upload-zone').classList.remove('hidden');
+    updateStatus('red', 'Esperando archivo CSV manual');
+  }
+}
+
+// Helper to read local dropped/selected file
+function readLocalFile(file) {
+  updateStatus('pulse yellow', `Leyendo archivo: ${file.name}...`);
+  const reader = new FileReader();
+  
+  reader.onload = (e) => {
+    const arrayBuffer = e.target.result;
+    decodeAndProcessCsv(arrayBuffer);
+    
+    // Success - hide drop zone
+    document.getElementById('upload-zone').classList.add('hidden');
+    updateStatus('green pulse', 'Archivo manual cargado');
+  };
+  
+  reader.onerror = () => {
+    updateStatus('red', 'Error al leer el archivo');
+    alert('Error al leer el archivo seleccionado.');
+  };
+  
+  reader.readAsArrayBuffer(file);
+}
+
+// Decode buffer with chosen encoding and process
+function decodeAndProcessCsv(arrayBuffer) {
+  state.rawBuffer = arrayBuffer;
+  const decoder = new TextDecoder(state.encoding);
+  const text = decoder.decode(arrayBuffer);
+  state.rawCsvText = text;
+  processCsvContent(text);
+}
+
+// Update Status Card
+function updateStatus(dotClass, text) {
+  const statusDot = document.getElementById('status-dot');
+  const statusText = document.getElementById('status-text');
+  statusDot.className = `dot ${dotClass}`;
+  statusText.textContent = text;
+}
+
+// Core business logic: Parse CSV, clean encodings/BOM, apply Date Filters
+function processCsvContent(csvString) {
+  // Pre-process headers to clean BOM, accents, duplicates and encoding glitches
+  const lines = csvString.split(/\r?\n/);
+  if (lines.length === 0 || !lines[0]) {
+    alert("El archivo CSV está vacío.");
+    return;
+  }
+  
+  let headerLine = lines[0];
+  
+  // Clean BOM and sanitize accents/typos
+  headerLine = headerLine.replace(/^\uFEFF/, ''); // Strip BOM
+  
+  // Replace characters with known replacements if encoding was broken
+  headerLine = headerLine.replace(/Ao/g, 'Año');
+  headerLine = headerLine.replace(/Cdigo/g, 'Código');
+  headerLine = headerLine.replace(/Da/g, 'Día');
+  
+  // Split header values by semicolon
+  const headers = headerLine.split(';');
+  
+  // Semicolon values check
+  if (headers.length < 2) {
+    alert("El CSV no parece estar separado por punto y coma ';'. Por favor, verifica el formato.");
+    return;
+  }
+  
+  // Clean individual headers
+  const cleanedHeaders = headers.map((h, index) => {
+    let clean = h.trim();
+    // Rename 10th column if duplicate of Fecha (Index 9)
+    if (clean === 'Fecha' && index === 9) {
+      return 'DiaMes';
+    }
+    return clean;
+  });
+  
+  // Replace the first line in the CSV text
+  lines[0] = cleanedHeaders.join(';');
+  const sanitizedCsv = lines.join('\n');
+  
+  // Parse with PapaParse
+  Papa.parse(sanitizedCsv, {
+    delimiter: ";",
+    header: true,
+    skipEmptyLines: true,
+    complete: function(results) {
+      if (results.errors.length > 0) {
+        console.warn("PapaParse errors:", results.errors);
+      }
+      
+      // Clean and sanitize row keys/values
+      state.records = results.data.map(row => {
+        const sanitized = {};
+        for (const key in row) {
+          const cleanKey = key.trim();
+          sanitized[cleanKey] = row[key] ? row[key].trim() : '';
+        }
+        return sanitized;
+      });
+      
+      // Apply Date Filter from state
+      filterAndRefreshData();
+    }
+  });
+}
+
+// Filter records based on state date and refresh metrics
+function filterAndRefreshData() {
+  state.filteredRecords = state.records.filter(row => {
+    const fecha = row.Fecha;
+    return fecha && fecha >= state.startDateFilter;
+  });
+  updateDashboardData();
+}
+
+// Compute general statistics and populate UI + Charts
+function updateDashboardData() {
+  const count = state.filteredRecords.length;
+  document.getElementById('record-count').textContent = count;
+  document.getElementById('kpi-alumnos').textContent = count;
+  
+  // Compute unique values
+  const uniqueCursos = new Set();
+  const uniqueProfesores = new Set();
+  const uniqueNiveles = new Set();
+  
+  state.filteredRecords.forEach(row => {
+    if (row.Código) uniqueCursos.add(row.Código);
+    if (row.Profesor) uniqueProfesores.add(row.Profesor);
+    if (row.Nivel) uniqueNiveles.add(row.Nivel);
+  });
+  
+  document.getElementById('kpi-cursos').textContent = uniqueCursos.size;
+  document.getElementById('kpi-profesores').textContent = uniqueProfesores.size;
+  document.getElementById('kpi-niveles').textContent = uniqueNiveles.size;
+  
+  // Update dropdown filter selectors
+  populateDropdownFilters(uniqueNiveles, uniqueProfesores);
+  
+  // Render Tab 1 Charts
+  renderCursosChart();
+  renderNivelesChart();
+  renderProfesorFechaChart();
+  
+  // Initialize/Refresh Tab 2 Builder
+  resetPivotBuilder();
+  
+  // Initialize Tab 3 Data Explorer
+  state.explorer.page = 1;
+  updateExplorerTable();
+}
+
+// Populate filters inside Explorer
+function populateDropdownFilters(niveles, profesores) {
+  const nivelSelect = document.getElementById('filter-nivel-select');
+  const profSelect = document.getElementById('filter-profesor-select');
+  const generalProfSelect = document.getElementById('teacher-filter-select');
+  
+  // Keep first option "Todos"
+  nivelSelect.innerHTML = '<option value="all">Todos</option>';
+  profSelect.innerHTML = '<option value="all">Todos</option>';
+  generalProfSelect.innerHTML = '<option value="all">Todos los Profesores</option>';
+  
+  // Populate Niveles
+  Array.from(niveles).sort().forEach(nivel => {
+    nivelSelect.innerHTML += `<option value="${nivel}">${nivel}</option>`;
+  });
+  
+  // Populate Profesores
+  Array.from(profesores).sort().forEach(prof => {
+    profSelect.innerHTML += `<option value="${prof}">${prof}</option>`;
+    generalProfSelect.innerHTML += `<option value="${prof}">${prof}</option>`;
+  });
+}
+
+// Destroy a chart safely
+function destroyChart(chartKey) {
+  if (state.charts[chartKey]) {
+    state.charts[chartKey].destroy();
+    state.charts[chartKey] = null;
+  }
+}
+
+// Chart 1: Alumnos por Curso (Troncal)
+function renderCursosChart() {
+  destroyChart('cursos');
+  
+  // Aggregate data
+  const counts = {};
+  state.filteredRecords.forEach(row => {
+    const curso = row.Código;
+    if (curso) {
+      counts[curso] = (counts[curso] || 0) + 1;
+    }
+  });
+  
+  // Sort descending
+  let sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  
+  // Limit count
+  const limitVal = document.getElementById('course-limit-select').value;
+  if (limitVal !== 'all') {
+    const limit = parseInt(limitVal, 10);
+    sorted = sorted.slice(0, limit);
+  }
+  
+  const labels = sorted.map(x => x[0]);
+  const data = sorted.map(x => x[1]);
+  
+  const ctx = document.getElementById('chart-cursos').getContext('2d');
+  
+  state.charts.cursos = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Cantidad de Alumnos',
+        data: data,
+        backgroundColor: 'rgba(92, 98, 245, 0.45)',
+        borderColor: '#5c62f5',
+        borderWidth: 2,
+        borderRadius: 6,
+        hoverBackgroundColor: 'rgba(92, 98, 245, 0.7)'
+      }]
+    },
+    options: {
+      indexAxis: 'y', // Horizontal bars
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        datalabels: {
+          color: '#ffffff',
+          anchor: 'end',
+          align: 'start',
+          offset: 4,
+          font: { family: 'Outfit', weight: 'bold', size: 10 },
+          formatter: Math.round
+        },
+        tooltip: {
+          padding: 12,
+          backgroundColor: 'rgba(15, 17, 26, 0.95)',
+          titleFont: { family: 'Outfit', size: 13 },
+          bodyFont: { family: 'Outfit', size: 12 },
+          borderColor: 'rgba(255, 255, 255, 0.1)',
+          borderWidth: 1
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(255, 255, 255, 0.05)' },
+          ticks: { color: '#9ca3af', font: { family: 'Outfit' } }
+        },
+        y: {
+          grid: { display: false },
+          ticks: { color: '#f3f4f6', font: { family: 'Outfit', size: 11 } }
+        }
+      }
+    }
+  });
+}
+
+// Chart 2: Distribución por Nivel
+function renderNivelesChart() {
+  destroyChart('niveles');
+  
+  // Aggregate data
+  const counts = {};
+  state.filteredRecords.forEach(row => {
+    const nivel = row.Nivel;
+    if (nivel) {
+      counts[nivel] = (counts[nivel] || 0) + 1;
+    }
+  });
+  
+  // Sort descending
+  const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  const labels = sorted.map(x => x[0]);
+  const data = sorted.map(x => x[1]);
+  
+  const ctx = document.getElementById('chart-niveles').getContext('2d');
+  
+  state.charts.niveles = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: labels,
+      datasets: [{
+        data: data,
+        backgroundColor: chartColors.slice(0, labels.length),
+        borderColor: '#0f111a',
+        borderWidth: 2,
+        hoverOffset: 12
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'right',
+          labels: {
+            color: '#f3f4f6',
+            font: { family: 'Outfit', size: 12 },
+            padding: 16
+          }
+        },
+        datalabels: {
+          color: '#ffffff',
+          font: { family: 'Outfit', weight: 'bold', size: 11 },
+          formatter: (value, ctx) => {
+            let sum = 0;
+            let dataArr = ctx.chart.data.datasets[0].data;
+            dataArr.map(data => { sum += data; });
+            let percentage = (value * 100 / sum).toFixed(0);
+            return percentage > 3 ? `${value}\n(${percentage}%)` : '';
+          },
+          textAlign: 'center'
+        },
+        tooltip: {
+          padding: 12,
+          backgroundColor: 'rgba(15, 17, 26, 0.95)',
+          titleFont: { family: 'Outfit', size: 13 },
+          bodyFont: { family: 'Outfit', size: 12 },
+          borderColor: 'rgba(255, 255, 255, 0.1)',
+          borderWidth: 1,
+          callbacks: {
+            label: function(context) {
+              const val = context.raw;
+              const total = context.dataset.data.reduce((a, b) => a + b, 0);
+              const percent = ((val / total) * 100).toFixed(1);
+              return ` Alumnos: ${val} (${percent}%)`;
+            }
+          }
+        }
+      },
+      cutout: '65%'
+    }
+  });
+}
+
+// Chart 3: Alumnos por Profesor y Fecha (Timeline Trend)
+function renderProfesorFechaChart() {
+  destroyChart('profesorFecha');
+  
+  // Get active teacher filter
+  const filterTeacher = document.getElementById('teacher-filter-select').value;
+  
+  // Group by Date, and if filter is 'all', show overall trend, otherwise show specific teacher trend
+  const counts = {};
+  state.filteredRecords.forEach(row => {
+    const fecha = row.Fecha;
+    const teacher = row.Profesor;
+    
+    if (fecha) {
+      if (filterTeacher === 'all' || teacher === filterTeacher) {
+        counts[fecha] = (counts[fecha] || 0) + 1;
+      }
+    }
+  });
+  
+  // Sort dates chronologically
+  const sorted = Object.entries(counts).sort((a, b) => a[0].localeCompare(b[0]));
+  const labels = sorted.map(x => {
+    // Format YYYY-MM-DD to DD/MM/YYYY for UI friendliness
+    const parts = x[0].split('-');
+    return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : x[0];
+  });
+  const data = sorted.map(x => x[1]);
+  
+  const ctx = document.getElementById('chart-profesor-fecha').getContext('2d');
+  
+  state.charts.profesorFecha = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: filterTeacher === 'all' ? 'Inscripciones Totales' : `Inscripciones para ${filterTeacher}`,
+        data: data,
+        borderColor: '#9d4edd',
+        backgroundColor: 'rgba(157, 78, 221, 0.12)',
+        borderWidth: 3,
+        fill: true,
+        tension: 0.35,
+        pointBackgroundColor: '#9d4edd',
+        pointBorderColor: '#0f111a',
+        pointHoverRadius: 7,
+        pointHoverBackgroundColor: '#9d4edd',
+        pointHoverBorderColor: '#fff',
+        pointBorderWidth: 2,
+        pointRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        datalabels: {
+          color: '#e2e8f0',
+          anchor: 'end',
+          align: 'top',
+          offset: 4,
+          font: { family: 'Outfit', weight: '600', size: 9 },
+          display: function(context) {
+            const count = context.chart.data.labels.length;
+            if (count > 25) {
+              return context.dataIndex % 2 === 0;
+            }
+            return true;
+          }
+        },
+        tooltip: {
+          padding: 12,
+          backgroundColor: 'rgba(15, 17, 26, 0.95)',
+          titleFont: { family: 'Outfit', size: 13 },
+          bodyFont: { family: 'Outfit', size: 12 },
+          borderColor: 'rgba(255, 255, 255, 0.1)',
+          borderWidth: 1
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(255, 255, 255, 0.05)' },
+          ticks: { color: '#9ca3af', font: { family: 'Outfit' }, maxRotation: 45 }
+        },
+        y: {
+          grid: { color: 'rgba(255, 255, 255, 0.05)' },
+          ticks: { color: '#9ca3af', font: { family: 'Outfit' } },
+          min: 0
+        }
+      }
+    }
+  });
+}
+
+// ================= PIVOT BUILDER (DRAG & DROP) LOGIC =================
+
+function setupDragAndDropBuilder() {
+  const fields = document.querySelectorAll('#builder-fields .field-pill');
+  const dropZones = document.querySelectorAll('.drop-zone');
+  
+  // Drag start
+  fields.forEach(field => {
+    field.addEventListener('dragstart', (e) => {
+      e.dataTransfer.setData('text/plain', field.getAttribute('data-field'));
+      field.classList.add('dragging');
+    });
+    
+    field.addEventListener('dragend', () => {
+      field.classList.remove('dragging');
+    });
+    
+    // Tap/Click support for mobile/click workflow
+    field.addEventListener('click', () => {
+      const fieldName = field.getAttribute('data-field');
+      onFieldClicked(fieldName);
+    });
+  });
+  
+  // Drag over zones
+  dropZones.forEach(zone => {
+    zone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      zone.classList.add('drag-over');
+    });
+    
+    zone.addEventListener('dragleave', () => {
+      zone.classList.remove('drag-over');
+    });
+    
+    zone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      zone.classList.remove('drag-over');
+      
+      const fieldName = e.dataTransfer.getData('text/plain');
+      const zoneType = zone.getAttribute('data-zone');
+      
+      assignFieldToZone(fieldName, zoneType);
+    });
+  });
+  
+  // Reset Builder Button
+  document.getElementById('btn-reset-builder').addEventListener('click', () => {
+    resetPivotBuilder();
+  });
+  
+  // Builder Chart type change
+  document.getElementById('builder-chart-type').addEventListener('change', (e) => {
+    state.builder.chartType = e.target.value;
+    updateBuilderVisualization();
+  });
+}
+
+// Click callback to automatically place a pill
+function onFieldClicked(fieldName) {
+  // If X is empty, place it there
+  if (!state.builder.xField) {
+    assignFieldToZone(fieldName, 'x');
+  } 
+  // Otherwise if Legend is empty and it's not the same field, place in Legend
+  else if (!state.builder.legendField && state.builder.xField !== fieldName) {
+    assignFieldToZone(fieldName, 'legend');
+  }
+}
+
+// Bind field to zone and redraw
+function assignFieldToZone(fieldName, zoneType) {
+  if (zoneType === 'x') {
+    // If it was in legend, clear legend
+    if (state.builder.legendField === fieldName) {
+      state.builder.legendField = null;
+    }
+    state.builder.xField = fieldName;
+  } else if (zoneType === 'legend') {
+    // If it was in X, clear X
+    if (state.builder.xField === fieldName) {
+      state.builder.xField = null;
+    }
+    state.builder.legendField = fieldName;
+  }
+  
+  updateBuilderPills();
+  updateBuilderVisualization();
+}
+
+// Remove pill from configuration
+function removeFieldFromZone(zoneType) {
+  if (zoneType === 'x') {
+    state.builder.xField = null;
+  } else if (zoneType === 'legend') {
+    state.builder.legendField = null;
+  }
+  
+  updateBuilderPills();
+  updateBuilderVisualization();
+}
+
+// Redraw draggable visual pills inside drop zones
+function updateBuilderPills() {
+  const zones = {
+    'x': document.getElementById('drop-x'),
+    'legend': document.getElementById('drop-legend')
+  };
+  
+  for (const zoneKey in zones) {
+    const zone = zones[zoneKey];
+    const fieldName = zoneKey === 'x' ? state.builder.xField : state.builder.legendField;
+    
+    if (fieldName) {
+      zone.innerHTML = `
+        <div class="field-pill" style="width:100%; justify-content: space-between;">
+          <span><i data-lucide="hash"></i> ${fieldDisplayNames[fieldName] || fieldName}</span>
+          <button class="btn-remove-pill" onclick="event.stopPropagation(); removeFieldFromZone('${zoneKey}')">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+      `;
+    } else {
+      const placeholder = zoneKey === 'x' 
+        ? 'Arrastra un campo aquí (ej: Código)' 
+        : 'Arrastra un campo para sub-agrupar';
+      zone.innerHTML = `<span class="placeholder-text">${placeholder}</span>`;
+    }
+  }
+  initLucide();
+}
+
+// Reset builder
+function resetPivotBuilder() {
+  state.builder.xField = null;
+  state.builder.legendField = null;
+  
+  updateBuilderPills();
+  updateBuilderVisualization();
+}
+
+// Make global context helper accessible to HTML click
+window.removeFieldFromZone = removeFieldFromZone;
+
+// Process aggregated dynamic data and render builder charts + pivot table
+function updateBuilderVisualization() {
+  destroyChart('builder');
+  
+  const emptyState = document.getElementById('builder-chart-empty');
+  const canvasEl = document.getElementById('chart-builder');
+  const exportBtn = document.getElementById('btn-export-builder');
+  const tableBody = document.querySelector('#table-builder tbody');
+  const tableHead = document.querySelector('#table-builder thead');
+  
+  // Safe guards
+  if (!state.builder.xField) {
+    emptyState.classList.remove('hidden');
+    canvasEl.classList.add('hidden');
+    exportBtn.classList.add('hidden');
+    
+    tableHead.innerHTML = `<tr><th>Eje X</th><th>Alumnos</th><th>Porcentaje</th></tr>`;
+    tableBody.innerHTML = `<tr><td colspan="3" class="text-center text-muted py-4">Configura los campos para poblar la tabla.</td></tr>`;
+    return;
+  }
+  
+  emptyState.classList.add('hidden');
+  canvasEl.classList.remove('hidden');
+  exportBtn.classList.remove('hidden');
+  
+  const records = state.filteredRecords;
+  const xCol = state.builder.xField;
+  const lCol = state.builder.legendField;
+  
+  // Aggregate logic
+  if (!lCol) {
+    // SINGLE GROUP BY
+    const counts = {};
+    let total = 0;
+    
+    records.forEach(row => {
+      const val = row[xCol] || '(Vacío)';
+      counts[val] = (counts[val] || 0) + 1;
+      total++;
+    });
+    
+    // Sort descending
+    const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+    const labels = sorted.map(x => x[0]);
+    const data = sorted.map(x => x[1]);
+    
+    // Render Chart
+    const ctx = canvasEl.getContext('2d');
+    const isPie = state.builder.chartType === 'pie';
+    
+    state.charts.builder = new Chart(ctx, {
+      type: isPie ? 'doughnut' : (state.builder.chartType === 'horizontalBar' ? 'bar' : state.builder.chartType),
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Alumnos',
+          data: data,
+          backgroundColor: isPie ? chartColors.slice(0, labels.length) : 'rgba(92, 98, 245, 0.5)',
+          borderColor: isPie ? '#0f111a' : '#5c62f5',
+          borderWidth: 2,
+          borderRadius: isPie ? 0 : 5
+        }]
+      },
+      options: {
+        indexAxis: state.builder.chartType === 'horizontalBar' ? 'y' : 'x',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: isPie, position: 'right', labels: { color: '#f3f4f6', font: { family: 'Outfit' } } },
+          datalabels: {
+            color: '#ffffff',
+            font: { family: 'Outfit', weight: 'bold', size: 10 },
+            anchor: 'end',
+            align: (context) => {
+              const chartType = context.chart.config.type;
+              const indexAxis = context.chart.options.indexAxis;
+              if (chartType === 'line') return 'top';
+              if (chartType === 'bar' && indexAxis === 'y') return 'start';
+              return 'start';
+            },
+            formatter: (value, ctx) => {
+              if (value === 0) return '';
+              const chartType = ctx.chart.config.type;
+              if (chartType === 'pie' || chartType === 'doughnut') {
+                let sum = 0;
+                let dataArr = ctx.chart.data.datasets[0].data;
+                dataArr.map(data => { sum += data; });
+                let percentage = (value * 100 / sum).toFixed(0);
+                return percentage > 4 ? `${value}\n(${percentage}%)` : '';
+              }
+              return value;
+            },
+            textAlign: 'center',
+            display: function(context) {
+              const dataCount = context.chart.data.labels.length;
+              return dataCount <= 35;
+            }
+          }
+        },
+        scales: isPie ? {} : {
+          x: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#9ca3af', font: { family: 'Outfit' } } },
+          y: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#9ca3af', font: { family: 'Outfit' } }, min: 0 }
+        }
+      }
+    });
+    
+    // Render Table
+    tableHead.innerHTML = `
+      <tr>
+        <th>${fieldDisplayNames[xCol] || xCol}</th>
+        <th>Alumnos</th>
+        <th>Porcentaje</th>
+      </tr>
+    `;
+    
+    tableBody.innerHTML = '';
+    sorted.forEach(([label, val]) => {
+      const pct = ((val / total) * 100).toFixed(1);
+      tableBody.innerHTML += `
+        <tr>
+          <td><strong>${label}</strong></td>
+          <td>${val}</td>
+          <td><span class="date-badge">${pct}%</span></td>
+        </tr>
+      `;
+    });
+    
+    // Total Row
+    tableBody.innerHTML += `
+      <tr style="border-top: 2px solid var(--border-card); font-weight: 700; background: rgba(255,255,255,0.02)">
+        <td>Total General</td>
+        <td>${total}</td>
+        <td>100%</td>
+      </tr>
+    `;
+  } 
+  else {
+    // TWO-DIMENSIONAL AGGREGATION (PIVOT TABLE)
+    const pivot = {}; // { [xVal]: { [lVal]: count } }
+    const allX = new Set();
+    const allL = new Set();
+    let total = 0;
+    
+    records.forEach(row => {
+      const xVal = row[xCol] || '(Vacío)';
+      const lVal = row[lCol] || '(Vacío)';
+      
+      allX.add(xVal);
+      allL.add(lVal);
+      total++;
+      
+      if (!pivot[xVal]) pivot[xVal] = {};
+      pivot[xVal][lVal] = (pivot[xVal][lVal] || 0) + 1;
+    });
+    
+    const sortedX = Array.from(allX).sort();
+    const sortedL = Array.from(allL).sort();
+    
+    // Datasets generation
+    const datasets = sortedL.map((lVal, index) => {
+      const data = sortedX.map(xVal => {
+        return pivot[xVal] ? (pivot[xVal][lVal] || 0) : 0;
+      });
+      
+      return {
+        label: lVal,
+        data: data,
+        backgroundColor: chartColors[index % chartColors.length],
+        borderColor: chartBorderColors[index % chartBorderColors.length],
+        borderWidth: 2,
+        borderRadius: 4
+      };
+    });
+    
+    // Render Chart (Bar/Stacked, Line)
+    const ctx = canvasEl.getContext('2d');
+    let chartType = state.builder.chartType;
+    if (chartType === 'pie') {
+      chartType = 'bar'; // Pie doesn't support stacked pivot data, fallback to bar
+    }
+    
+    state.charts.builder = new Chart(ctx, {
+      type: chartType === 'horizontalBar' ? 'bar' : chartType,
+      data: {
+        labels: sortedX,
+        datasets: datasets
+      },
+      options: {
+        indexAxis: chartType === 'horizontalBar' ? 'y' : 'x',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: true, position: 'top', labels: { color: '#f3f4f6', font: { family: 'Outfit' } } },
+          datalabels: {
+            color: '#ffffff',
+            font: { family: 'Outfit', weight: 'bold', size: 9 },
+            anchor: 'center',
+            align: 'center',
+            formatter: (value) => {
+              return value > 0 ? value : '';
+            },
+            display: function(context) {
+              const dataCount = context.chart.data.labels.length;
+              return dataCount <= 25;
+            }
+          }
+        },
+        scales: {
+          x: { 
+            stacked: true, 
+            grid: { color: 'rgba(255, 255, 255, 0.05)' }, 
+            ticks: { color: '#9ca3af', font: { family: 'Outfit' } } 
+          },
+          y: { 
+            stacked: true, 
+            grid: { color: 'rgba(255, 255, 255, 0.05)' }, 
+            ticks: { color: '#9ca3af', font: { family: 'Outfit' } }, 
+            min: 0 
+          }
+        }
+      }
+    });
+    
+    // Render Pivot Table Header
+    let headHtml = `<tr><th>${fieldDisplayNames[xCol] || xCol}</th>`;
+    sortedL.forEach(lVal => {
+      headHtml += `<th>${lVal}</th>`;
+    });
+    headHtml += `<th>Total General</th></tr>`;
+    tableHead.innerHTML = headHtml;
+    
+    // Render Pivot Table Body
+    tableBody.innerHTML = '';
+    
+    // X-Row Totals
+    const colTotals = {};
+    sortedL.forEach(l => colTotals[l] = 0);
+    
+    sortedX.forEach(xVal => {
+      let rowHtml = `<tr><td><strong>${xVal}</strong></td>`;
+      let rowTotal = 0;
+      
+      sortedL.forEach(lVal => {
+        const val = pivot[xVal] ? (pivot[xVal][lVal] || 0) : 0;
+        rowTotal += val;
+        colTotals[lVal] += val;
+        rowHtml += `<td>${val === 0 ? '-' : val}</td>`;
+      });
+      
+      rowHtml += `<td class="text-muted"><strong>${rowTotal}</strong></td></tr>`;
+      tableBody.innerHTML += rowHtml;
+    });
+    
+    // Column Totals Bottom Row
+    let totalRowHtml = `
+      <tr style="border-top: 2px solid var(--border-card); font-weight: 700; background: rgba(255,255,255,0.02)">
+        <td>Total General</td>
+    `;
+    let grandTotal = 0;
+    sortedL.forEach(lVal => {
+      grandTotal += colTotals[lVal];
+      totalRowHtml += `<td>${colTotals[lVal]}</td>`;
+    });
+    totalRowHtml += `<td>${grandTotal}</td></tr>`;
+    tableBody.innerHTML += totalRowHtml;
+  }
+}
+
+// Export Builder dynamic data to CSV
+function exportBuilderPivotData() {
+  const table = document.getElementById('table-builder');
+  const rows = table.querySelectorAll('tr');
+  const csv = [];
+  
+  rows.forEach(row => {
+    const cols = row.querySelectorAll('th, td');
+    const rowData = [];
+    cols.forEach(col => {
+      // Escape commas and spaces
+      let val = col.innerText.trim();
+      val = val.replace(/"/g, '""');
+      rowData.push(`"${val}"`);
+    });
+    csv.push(rowData.join(';')); // Maintain semicolon for Latin Excel
+  });
+  
+  const csvContent = csv.join('\n');
+  const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  
+  const link = document.createElement("a");
+  link.setAttribute("href", url);
+  link.setAttribute("download", `pivot_${state.builder.xField}_vs_${state.builder.legendField || 'count'}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+// ================= TAB: EXPLORADOR DE DATOS LOGIC =================
+
+// Filter logic based on Search and Selected filters
+function getFilteredExplorerRecords() {
+  let records = state.filteredRecords;
+  
+  // Apply Search
+  const query = state.explorer.search.toLowerCase().trim();
+  if (query) {
+    records = records.filter(row => {
+      return (
+        (row.Alumno && row.Alumno.toLowerCase().includes(query)) ||
+        (row.Profesor && row.Profesor.toLowerCase().includes(query)) ||
+        (row.Código && row.Código.toLowerCase().includes(query)) ||
+        (row.Nivel && row.Nivel.toLowerCase().includes(query)) ||
+        (row.Modalidad && row.Modalidad.toLowerCase().includes(query)) ||
+        (row.Fecha && row.Fecha.toLowerCase().includes(query))
+      );
+    });
+  }
+  
+  // Apply Nivel Filter
+  if (state.explorer.filterNivel !== 'all') {
+    records = records.filter(row => row.Nivel === state.explorer.filterNivel);
+  }
+  
+  // Apply Profesor Filter
+  if (state.explorer.filterProfesor !== 'all') {
+    records = records.filter(row => row.Profesor === state.explorer.filterProfesor);
+  }
+  
+  // Apply Sorting
+  const sortBy = state.explorer.sortBy;
+  const sortDir = state.explorer.sortDir;
+  
+  records.sort((a, b) => {
+    const valA = a[sortBy] || '';
+    const valB = b[sortBy] || '';
+    
+    // Chronological date sort or string alphabetical sort
+    let comparison = 0;
+    if (sortBy === 'Fecha' || sortBy === 'Horario') {
+      comparison = valA.localeCompare(valB);
+    } else {
+      comparison = valA.localeCompare(valB, 'es', { sensitivity: 'base' });
+    }
+    
+    return sortDir === 'asc' ? comparison : -comparison;
+  });
+  
+  return records;
+}
+
+// Redraw paginated explorer table
+function updateExplorerTable() {
+  const records = getFilteredExplorerRecords();
+  const total = records.length;
+  
+  const start = (state.explorer.page - 1) * state.explorer.pageSize;
+  const end = Math.min(start + state.explorer.pageSize, total);
+  
+  const paginated = records.slice(start, end);
+  const tbody = document.getElementById('explorer-tbody');
+  
+  // Update footer labels
+  document.getElementById('pag-start').textContent = total === 0 ? 0 : start + 1;
+  document.getElementById('pag-end').textContent = end;
+  document.getElementById('pag-total').textContent = total;
+  
+  // Toggle pagination buttons disabled state
+  document.getElementById('pag-prev').disabled = state.explorer.page <= 1;
+  document.getElementById('pag-next').disabled = end >= total;
+  
+  // Draw table body
+  if (total === 0) {
+    tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted py-4">No se encontraron registros que coincidan con la búsqueda.</td></tr>`;
+    drawPaginationControls(0);
+    return;
+  }
+  
+  tbody.innerHTML = '';
+  paginated.forEach(row => {
+    tbody.innerHTML += `
+      <tr>
+        <td><strong>${row.Fecha || '-'}</strong></td>
+        <td><code class="date-badge">${row.Código || '-'}</code></td>
+        <td>${row.Alumno || '-'}</td>
+        <td>${row.Nivel || '-'}</td>
+        <td>${row.Día || '-'}</td>
+        <td>${row.Horario || '-'}</td>
+        <td>${row.Modalidad || '-'}</td>
+        <td>${row.Profesor || '-'}</td>
+      </tr>
+    `;
+  });
+  
+  const totalPages = Math.ceil(total / state.explorer.pageSize);
+  drawPaginationControls(totalPages);
+}
+
+// Render page numbers (1, 2, ..., N)
+function drawPaginationControls(totalPages) {
+  const container = document.getElementById('pag-numbers');
+  container.innerHTML = '';
+  
+  if (totalPages <= 1) return;
+  
+  const current = state.explorer.page;
+  const maxButtons = 5;
+  let startPage = Math.max(1, current - 2);
+  let endPage = Math.min(totalPages, startPage + maxButtons - 1);
+  
+  if (endPage - startPage < maxButtons - 1) {
+    startPage = Math.max(1, endPage - maxButtons + 1);
+  }
+  
+  // First page button
+  if (startPage > 1) {
+    container.innerHTML += `<button class="page-num" onclick="setExplorerPage(1)">1</button>`;
+    if (startPage > 2) {
+      container.innerHTML += `<span class="page-dots">...</span>`;
+    }
+  }
+  
+  // Middle buttons
+  for (let i = startPage; i <= endPage; i++) {
+    container.innerHTML += `
+      <button class="page-num ${i === current ? 'active' : ''}" onclick="setExplorerPage(${i})">${i}</button>
+    `;
+  }
+  
+  // Last page button
+  if (endPage < totalPages) {
+    if (endPage < totalPages - 1) {
+      container.innerHTML += `<span class="page-dots">...</span>`;
+    }
+    container.innerHTML += `<button class="page-num" onclick="setExplorerPage(${totalPages})">${totalPages}</button>`;
+  }
+}
+
+// Direct change page callback from page button click
+function setExplorerPage(page) {
+  state.explorer.page = page;
+  updateExplorerTable();
+}
+window.setExplorerPage = setExplorerPage;
+
+// Helper to export general collections to CSV
+function exportToCsv(filename, dataRows) {
+  if (dataRows.length === 0) {
+    alert("No hay datos para exportar.");
+    return;
+  }
+  
+  // Get keys from first item
+  const keys = Object.keys(dataRows[0]);
+  const csv = [];
+  
+  // Header row
+  csv.push(keys.map(k => `"${k}"`).join(';'));
+  
+  // Data rows
+  dataRows.forEach(row => {
+    const rowValues = keys.map(k => {
+      let val = row[k] || '';
+      val = val.replace(/"/g, '""');
+      return `"${val}"`;
+    });
+    csv.push(rowValues.join(';'));
+  });
+  
+  const csvContent = csv.join('\n');
+  const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  
+  const link = document.createElement("a");
+  link.setAttribute("href", url);
+  link.setAttribute("download", filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}

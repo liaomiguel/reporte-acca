@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard ACCA - Gestión de Alumnos</title>
+  <!-- Google Fonts: Outfit -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- CSS Stylesheet -->
+  <link rel="stylesheet" href="style.css">
+  <!-- CDNs for interactive features -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="https://unpkg.com/lucide@latest" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+</head>
+<body>
+  <div class="app-container">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="logo">
+          <i data-lucide="graduation-cap" class="logo-icon"></i>
+          <span>ACCA Dashboard</span>
+        </div>
+      </div>
+      
+      <nav class="sidebar-nav">
+        <button class="nav-btn active" data-tab="general">
+          <i data-lucide="layout-dashboard"></i>
+          <span>Resumen General</span>
+        </button>
+        <button class="nav-btn" data-tab="builder">
+          <i data-lucide="sliders"></i>
+          <span>Constructor Pivot</span>
+        </button>
+        <button class="nav-btn" data-tab="explorer">
+          <i data-lucide="table"></i>
+          <span>Explorador de Datos</span>
+        </button>
+      </nav>
+      
+      <div class="sidebar-footer">
+        <div class="status-card">
+          <div class="status-indicator">
+            <span class="dot pulse yellow" id="status-dot"></span>
+            <span id="status-text">Cargando archivo...</span>
+          </div>
+          <div class="status-details">
+            <p>Filtro: <strong class="date-badge" id="status-filter-date">≥ 06/06/2026</strong></p>
+            <p>Registros: <strong id="record-count">0</strong></p>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      <!-- Upper Header -->
+      <header class="main-header">
+        <div class="header-title">
+          <h1 id="page-title">Resumen General</h1>
+          <p class="subtitle" id="page-subtitle">Análisis de inscripciones y distribución de alumnos según filtros seleccionados</p>
+        </div>
+        <div class="header-actions">
+          <!-- Import CSV Button -->
+          <button class="btn btn-primary" id="btn-import-csv">
+            <i data-lucide="upload"></i>
+            <span>Importar CSV</span>
+          </button>
+
+          <!-- Date Filter Picker -->
+          <div class="date-filter-control">
+            <label for="filter-date-input"><i data-lucide="calendar-days"></i> Desde:</label>
+            <input type="date" id="filter-date-input" value="2026-06-06">
+          </div>
+
+          <!-- Encoding Toggle (UTF-8 vs CP1252) -->
+          <div class="encoding-control">
+            <label for="encoding-select"><i data-lucide="globe"></i> Codificación:</label>
+            <select id="encoding-select">
+              <option value="UTF-8">UTF-8 (Estándar)</option>
+              <option value="ISO-8859-1">Windows-1252 / ISO (Español)</option>
+            </select>
+          </div>
+          
+          <button class="btn btn-outline" id="btn-reload-file" title="Recargar archivo base local">
+            <i data-lucide="refresh-cw"></i>
+          </button>
+        </div>
+      </header>
+
+      <!-- Drag & Drop Uploader (Fallback / Manual load) -->
+      <section class="upload-section hidden" id="upload-zone">
+        <div class="upload-card">
+          <input type="file" id="csv-file-input" accept=".csv" class="hidden-file-input">
+          <div class="upload-icon-container">
+            <i data-lucide="upload-cloud" class="upload-icon"></i>
+          </div>
+          <h3>Carga manual de datos</h3>
+          <p>No se pudo cargar el archivo local automáticamente (seguridad CORS). Arrastra el archivo <code>Alumnos-Acca.csv</code> aquí o haz clic para seleccionarlo de tu ordenador.</p>
+          <button class="btn btn-primary" id="btn-trigger-upload">Seleccionar Archivo</button>
+        </div>
+      </section>
+
+      <!-- Main Interactive Content Panels -->
+      <div class="content-body">
+        
+        <!-- ================= TAB: GENERAL RESUMEN ================= -->
+        <section class="tab-panel active" id="panel-general">
+          <!-- KPI Summary Cards -->
+          <div class="kpi-grid">
+            <div class="kpi-card">
+              <div class="kpi-icon-wrapper blue">
+                <i data-lucide="users"></i>
+              </div>
+              <div class="kpi-content">
+                <p class="kpi-label">Total Alumnos</p>
+                <h3 class="kpi-value" id="kpi-alumnos">0</h3>
+                <span class="kpi-trend positive"><i data-lucide="trending-up"></i> Activos ≥ 06/06/2026</span>
+              </div>
+            </div>
+            
+            <div class="kpi-card">
+              <div class="kpi-icon-wrapper purple">
+                <i data-lucide="book-open"></i>
+              </div>
+              <div class="kpi-content">
+                <p class="kpi-label">Cursos Únicos</p>
+                <h3 class="kpi-value" id="kpi-cursos">0</h3>
+                <span class="kpi-trend text-muted">Códigos de clase</span>
+              </div>
+            </div>
+
+            <div class="kpi-card">
+              <div class="kpi-icon-wrapper emerald">
+                <i data-lucide="user-check"></i>
+              </div>
+              <div class="kpi-content">
+                <p class="kpi-label">Profesores</p>
+                <h3 class="kpi-value" id="kpi-profesores">0</h3>
+                <span class="kpi-trend text-muted">Docentes asignados</span>
+              </div>
+            </div>
+
+            <div class="kpi-card">
+              <div class="kpi-icon-wrapper amber">
+                <i data-lucide="bar-chart-2"></i>
+              </div>
+              <div class="kpi-content">
+                <p class="kpi-label">Niveles</p>
+                <h3 class="kpi-value" id="kpi-niveles">0</h3>
+                <span class="kpi-trend text-muted">Distribución de dificultad</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Charts Row 1 -->
+          <div class="charts-row">
+            <!-- Main Troncal Chart: Alumnos por Curso -->
+            <div class="chart-card span-2">
+              <div class="chart-header">
+                <div class="chart-header-title">
+                  <h3><i data-lucide="graduation-cap"></i> Alumnos por Curso (Troncal)</h3>
+                  <p class="subtitle">Recuento total de alumnos inscritos en cada código de curso</p>
+                </div>
+                <div class="chart-actions">
+                  <select id="course-limit-select" class="select-sm">
+                    <option value="10">Ver Top 10</option>
+                    <option value="20" selected>Ver Top 20</option>
+                    <option value="50">Ver Top 50</option>
+                    <option value="all">Ver Todos</option>
+                  </select>
+                </div>
+              </div>
+              <div class="chart-container" style="height: 380px;">
+                <canvas id="chart-cursos"></canvas>
+              </div>
+            </div>
+
+            <!-- Level Distribution Chart -->
+            <div class="chart-card">
+              <div class="chart-header">
+                <div class="chart-header-title">
+                  <h3><i data-lucide="pie-chart"></i> Distribución por Nivel</h3>
+                  <p class="subtitle">Participación relativa según el nivel del alumno</p>
+                </div>
+              </div>
+              <div class="chart-container" style="height: 380px;">
+                <canvas id="chart-niveles"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <!-- Charts Row 2 -->
+          <div class="charts-row">
+            <!-- Heatmap or Line Chart: Profesor por Fecha -->
+            <div class="chart-card span-3">
+              <div class="chart-header">
+                <div class="chart-header-title">
+                  <h3><i data-lucide="calendar"></i> Inscripciones por Profesor y Fecha</h3>
+                  <p class="subtitle">Evolución del número de alumnos por profesor a lo largo de las fechas asignadas</p>
+                </div>
+                <div class="chart-actions">
+                  <select id="teacher-filter-select" class="select-sm">
+                    <option value="all">Todos los Profesores</option>
+                    <!-- Will be populated dynamically -->
+                  </select>
+                </div>
+              </div>
+              <div class="chart-container" style="height: 320px;">
+                <canvas id="chart-profesor-fecha"></canvas>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= TAB: CONSTRUCTOR PIVOT ================= -->
+        <section class="tab-panel" id="panel-builder">
+          <div class="builder-layout">
+            <!-- Left sidebar: Fields Drawer -->
+            <div class="builder-sidebar">
+              <div class="builder-card-header">
+                <h4><i data-lucide="grip-vertical"></i> 1. Campos Disponibles</h4>
+                <p>Arrastra los campos a las zonas de configuración, o haz clic en ellos para colocarlos.</p>
+              </div>
+              <div class="fields-list" id="builder-fields">
+                <div class="field-pill" draggable="true" data-field="Código">
+                  <i data-lucide="hash"></i> <span>Código Curso</span>
+                </div>
+                <div class="field-pill" draggable="true" data-field="Nivel">
+                  <i data-lucide="layers"></i> <span>Nivel</span>
+                </div>
+                <div class="field-pill" draggable="true" data-field="Profesor">
+                  <i data-lucide="user"></i> <span>Profesor</span>
+                </div>
+                <div class="field-pill" draggable="true" data-field="Fecha">
+                  <i data-lucide="calendar"></i> <span>Fecha</span>
+                </div>
+                <div class="field-pill" draggable="true" data-field="Mes">
+                  <i data-lucide="clock"></i> <span>Mes</span>
+                </div>
+                <div class="field-pill" draggable="true" data-field="Tipo">
+                  <i data-lucide="tags"></i> <span>Tipo</span>
+                </div>
+                <div class="field-pill" draggable="true" data-field="Día">
+                  <i data-lucide="sun"></i> <span>Día</span>
+                </div>
+                <div class="field-pill" draggable="true" data-field="Modalidad">
+                  <i data-lucide="globe-2"></i> <span>Modalidad</span>
+                </div>
+                <div class="field-pill" draggable="true" data-field="Horario">
+                  <i data-lucide="alarm-clock"></i> <span>Horario</span>
+                </div>
+              </div>
+
+              <div class="builder-instructions">
+                <h5>Metric:</h5>
+                <div class="metric-pill">
+                  <i data-lucide="users"></i> <span>Alumnos (Recuento)</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Central & Right area: Drop zones and charts -->
+            <div class="builder-workspace">
+              <!-- Drop Zones Header -->
+              <div class="dropzone-bar">
+                <!-- Dropzone X-Axis / Group By -->
+                <div class="drop-target-wrapper">
+                  <label><i data-lucide="arrow-right"></i> Eje X (Filas / Agrupar por):</label>
+                  <div class="drop-zone" id="drop-x" data-zone="x">
+                    <span class="placeholder-text">Arrastra un campo aquí (ej: Código)</span>
+                  </div>
+                </div>
+
+                <!-- Dropzone Legend / Color Stack -->
+                <div class="drop-target-wrapper">
+                  <label><i data-lucide="combine"></i> Leyenda (Apilar / Columnas): <small class="optional-text">(Opcional)</small></label>
+                  <div class="drop-zone" id="drop-legend" data-zone="legend">
+                    <span class="placeholder-text">Arrastra un campo para sub-agrupar</span>
+                  </div>
+                </div>
+
+                <!-- Chart Type Selector -->
+                <div class="drop-target-wrapper width-auto">
+                  <label><i data-lucide="bar-chart-3"></i> Tipo de Gráfico:</label>
+                  <select id="builder-chart-type" class="select-md">
+                    <option value="bar">Barra Vertical</option>
+                    <option value="horizontalBar">Barra Horizontal</option>
+                    <option value="line">Línea</option>
+                    <option value="pie">Torta / Doughnut</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Output Container -->
+              <div class="builder-results">
+                <!-- Live Chart -->
+                <div class="chart-card">
+                  <div class="chart-header border-none">
+                    <div class="chart-header-title">
+                      <h3><i data-lucide="eye"></i> Vista Previa del Gráfico</h3>
+                    </div>
+                    <button class="btn btn-outline btn-sm" id="btn-reset-builder">
+                      <i data-lucide="rotate-ccw"></i> Limpiar Campos
+                    </button>
+                  </div>
+                  <div class="builder-chart-container" style="height: 350px;">
+                    <div class="builder-empty-state" id="builder-chart-empty">
+                      <i data-lucide="bar-chart-2" class="empty-icon"></i>
+                      <p>Configura el Eje X arrastrando un campo para generar el gráfico interactivo.</p>
+                    </div>
+                    <canvas id="chart-builder" class="hidden"></canvas>
+                  </div>
+                </div>
+
+                <!-- Dynamic Data Table -->
+                <div class="chart-card table-card margin-top">
+                  <div class="chart-header">
+                    <div class="chart-header-title">
+                      <h3><i data-lucide="grid"></i> Tabla Resumen Dinámica</h3>
+                    </div>
+                    <button class="btn btn-outline btn-sm hidden" id="btn-export-builder">
+                      <i data-lucide="download"></i> Exportar a CSV
+                    </button>
+                  </div>
+                  <div class="table-container">
+                    <table class="pivot-table" id="table-builder">
+                      <thead>
+                        <tr>
+                          <th>Eje X</th>
+                          <th>Alumnos</th>
+                          <th>Porcentaje</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td colspan="3" class="text-center text-muted py-4">Configura los campos para poblar la tabla.</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= TAB: EXPLORADOR DE DATOS ================= -->
+        <section class="tab-panel" id="panel-explorer">
+          <div class="chart-card table-card">
+            <!-- Table Header Control Panel -->
+            <div class="table-control-bar">
+              <div class="search-box">
+                <i data-lucide="search" class="search-icon"></i>
+                <input type="text" id="explorer-search" placeholder="Buscar por Alumno, Profesor, Código, Nivel, etc...">
+              </div>
+              
+              <div class="table-actions">
+                <div class="filter-group">
+                  <label for="filter-nivel-select">Nivel:</label>
+                  <select id="filter-nivel-select" class="select-sm">
+                    <option value="all">Todos</option>
+                  </select>
+                </div>
+                <div class="filter-group">
+                  <label for="filter-profesor-select">Profesor:</label>
+                  <select id="filter-profesor-select" class="select-sm">
+                    <option value="all">Todos</option>
+                  </select>
+                </div>
+                <button class="btn btn-outline btn-sm" id="btn-export-explorer">
+                  <i data-lucide="download"></i> Exportar Filtrados
+                </button>
+              </div>
+            </div>
+
+            <!-- Real Table -->
+            <div class="table-container max-height-explorer">
+              <table class="data-table" id="table-explorer">
+                <thead>
+                  <tr>
+                    <th data-sort="Fecha">Fecha <i class="sort-icon desc" data-lucide="chevron-down"></i></th>
+                    <th data-sort="Código">Código Curso <i class="sort-icon" data-lucide="chevrons-up-down"></i></th>
+                    <th data-sort="Alumno">Alumno <i class="sort-icon" data-lucide="chevrons-up-down"></i></th>
+                    <th data-sort="Nivel">Nivel <i class="sort-icon" data-lucide="chevrons-up-down"></i></th>
+                    <th data-sort="Día">Día <i class="sort-icon" data-lucide="chevrons-up-down"></i></th>
+                    <th data-sort="Horario">Horario <i class="sort-icon" data-lucide="chevrons-up-down"></i></th>
+                    <th data-sort="Modalidad">Modalidad <i class="sort-icon" data-lucide="chevrons-up-down"></i></th>
+                    <th data-sort="Profesor">Profesor <i class="sort-icon" data-lucide="chevrons-up-down"></i></th>
+                  </tr>
+                </thead>
+                <tbody id="explorer-tbody">
+                  <!-- Will be loaded dynamically -->
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Table Pagination Footer -->
+            <div class="table-pagination-bar">
+              <div class="pagination-info">
+                Mostrando del <span id="pag-start">0</span> al <span id="pag-end">0</span> de <span id="pag-total">0</span> registros
+              </div>
+              <div class="pagination-controls">
+                <button class="btn-pagination" id="pag-prev" disabled><i data-lucide="chevron-left"></i> Anterior</button>
+                <div class="pagination-pages" id="pag-numbers">
+                  <!-- Populated dynamically -->
+                </div>
+                <button class="btn-pagination" id="pag-next" disabled>Siguiente <i data-lucide="chevron-right"></i></button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </main>
+  </div>
+  
+  <!-- JavaScript Code -->
+  <script src="app.js"></script>
+</body>
+</html>
