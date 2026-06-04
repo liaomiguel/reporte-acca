@@ -17,7 +17,47 @@
   <script src="https://unpkg.com/lucide@latest" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 </head>
 <body>
-  <div class="app-container">
+  <!-- Login Screen -->
+  <div class="login-container" id="login-screen">
+    <div class="login-card">
+      <div class="login-header">
+        <div class="login-logo">
+          <i data-lucide="graduation-cap" class="login-logo-icon"></i>
+          <span>ACCA Dashboard</span>
+        </div>
+        <p class="login-subtitle">Introduce tus credenciales para acceder</p>
+      </div>
+      <form id="login-form">
+        <div class="form-group">
+          <label for="login-username">Usuario</label>
+          <div class="input-wrapper">
+            <i data-lucide="user" class="input-icon"></i>
+            <input type="text" id="login-username" placeholder="Ingresa tu usuario" required autocomplete="username">
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="login-password">Contraseña</label>
+          <div class="input-wrapper">
+            <i data-lucide="lock" class="input-icon"></i>
+            <input type="password" id="login-password" placeholder="••••••••" required autocomplete="current-password">
+          </div>
+        </div>
+        <div class="login-error-message hidden" id="login-error">
+          <i data-lucide="alert-circle"></i>
+          <span>Usuario o contraseña incorrectos</span>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block" id="btn-login-submit">
+          <span>Ingresar</span>
+          <i data-lucide="log-in"></i>
+        </button>
+      </form>
+      <div class="login-helper">
+        <p>Las credenciales se administran mediante variables <code>.env</code></p>
+      </div>
+    </div>
+  </div>
+
+  <div class="app-container hidden">
     <!-- Sidebar Navigation -->
     <aside class="sidebar">
       <div class="sidebar-header">
@@ -53,6 +93,10 @@
             <p>Registros: <strong id="record-count">0</strong></p>
           </div>
         </div>
+        <button class="btn btn-outline btn-logout" id="btn-logout" title="Cerrar sesión">
+          <i data-lucide="log-out"></i>
+          <span>Cerrar Sesión</span>
+        </button>
       </div>
     </aside>
 
@@ -420,6 +464,6 @@
   </div>
   
   <!-- JavaScript Code -->
-  <script src="app.js"></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>

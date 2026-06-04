@@ -83,7 +83,7 @@ window.addEventListener('DOMContentLoaded', () => {
   initLucide();
   setupTabNavigation();
   setupEventListeners();
-  loadDataAutomatically();
+  checkAuthentication();
 });
 
 // Setup Lucide Icons
@@ -91,6 +91,62 @@ function initLucide() {
   if (typeof lucide !== 'undefined') {
     lucide.createIcons();
   }
+}
+
+// Check and manage authentication
+function checkAuthentication() {
+  const isAuth = sessionStorage.getItem('dashboard_authenticated') === 'true';
+  const loginScreen = document.getElementById('login-screen');
+  const appContainer = document.querySelector('.app-container');
+
+  if (isAuth) {
+    loginScreen.classList.add('hidden');
+    appContainer.classList.remove('hidden');
+    // If charts already exist, resize them so they fit the parent containers correctly
+    Object.keys(state.charts).forEach(key => {
+      if (state.charts[key]) {
+        state.charts[key].resize();
+      }
+    });
+    loadDataAutomatically();
+  } else {
+    loginScreen.classList.remove('hidden');
+    appContainer.classList.add('hidden');
+    initLucide();
+  }
+}
+
+// Handle login submission
+function handleLogin(e) {
+  e.preventDefault();
+  const usernameInput = document.getElementById('login-username').value.trim();
+  const passwordInput = document.getElementById('login-password').value;
+  const errorMsg = document.getElementById('login-error');
+
+  // In Vite, environment variables are loaded via import.meta.env
+  // Provide safe fallback credentials in case .env is missing or not configured
+  const expectedUser = import.meta.env.VITE_DASHBOARD_USER || 'admin';
+  const expectedPass = import.meta.env.VITE_DASHBOARD_PASSWORD || 'acca_admin_2026';
+
+  if (usernameInput === expectedUser && passwordInput === expectedPass) {
+    errorMsg.classList.add('hidden');
+    sessionStorage.setItem('dashboard_authenticated', 'true');
+    checkAuthentication();
+  } else {
+    errorMsg.classList.remove('hidden');
+    // Clear password input
+    document.getElementById('login-password').value = '';
+  }
+}
+
+// Handle logout
+function handleLogout() {
+  sessionStorage.removeItem('dashboard_authenticated');
+  // Clear inputs and error
+  document.getElementById('login-username').value = '';
+  document.getElementById('login-password').value = '';
+  document.getElementById('login-error').classList.add('hidden');
+  checkAuthentication();
 }
 
 // Setup Header & Sidebar Tab Navigation
@@ -136,6 +192,18 @@ function setupTabNavigation() {
 
 // Main setup for UI interactive listeners
 function setupEventListeners() {
+  // Login Form Submission
+  const loginForm = document.getElementById('login-form');
+  if (loginForm) {
+    loginForm.addEventListener('submit', handleLogin);
+  }
+
+  // Logout Button
+  const logoutBtn = document.getElementById('btn-logout');
+  if (logoutBtn) {
+    logoutBtn.addEventListener('click', handleLogout);
+  }
+
   // Reload Button
   document.getElementById('btn-reload-file').addEventListener('click', () => {
     loadDataAutomatically();
