@@ -89,11 +89,16 @@ body {
   top: 0;
   z-index: 100;
   padding: 24px;
+  transition: var(--transition);
 }
 
 .sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   padding-bottom: 24px;
   border-bottom: 1px solid var(--border-card);
+  gap: 12px;
 }
 
 .logo {
@@ -232,6 +237,7 @@ body {
   flex-direction: column;
   gap: 32px;
   min-width: 0;
+  transition: var(--transition);
 }
 
 /* Header Area */
@@ -1366,4 +1372,93 @@ body {
   background-color: rgba(239, 68, 68, 0.08);
   border-color: rgba(239, 68, 68, 0.4);
   color: #f87171;
+}
+
+/* ================= COLLAPSIBLE SIDEBAR STYLES ================= */
+
+/* Toggle Sidebar Button Style */
+.btn-toggle-sidebar {
+  background: transparent;
+  border: 1px solid var(--border-card);
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  transition: var(--transition);
+  flex-shrink: 0;
+}
+
+.btn-toggle-sidebar:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-main);
+  border-color: var(--border-card-hover);
+}
+
+.btn-toggle-sidebar i {
+  width: 18px;
+  height: 18px;
+}
+
+/* Collapsed State Layout Override */
+.app-container.sidebar-collapsed {
+  --sidebar-width: 80px;
+}
+
+.app-container.sidebar-collapsed .sidebar {
+  padding: 24px 16px;
+}
+
+.app-container.sidebar-collapsed .sidebar-header {
+  flex-direction: column;
+  gap: 16px;
+  align-items: center;
+}
+
+/* Hide text labels when sidebar is collapsed */
+.sidebar-collapsed .logo span,
+.sidebar-collapsed .nav-btn span,
+.sidebar-collapsed .status-card .status-details,
+.sidebar-collapsed .status-card #status-text,
+.sidebar-collapsed .btn-logout span {
+  display: none !important;
+}
+
+/* Center elements in collapsed mode */
+.sidebar-collapsed .logo {
+  justify-content: center;
+}
+
+.sidebar-collapsed .nav-btn {
+  justify-content: center;
+  padding: 14px 0;
+}
+
+.sidebar-collapsed .nav-btn i {
+  margin: 0;
+}
+
+.sidebar-collapsed .status-card {
+  padding: 12px 0;
+  border: none;
+  background: transparent;
+  display: flex;
+  justify-content: center;
+}
+
+.sidebar-collapsed .status-indicator {
+  margin-bottom: 0;
+  justify-content: center;
+}
+
+.sidebar-collapsed .btn-logout {
+  padding: 12px 0;
+  justify-content: center;
+}
+
+.sidebar-collapsed .btn-logout i {
+  margin: 0;
 }

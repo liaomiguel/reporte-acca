@@ -94,6 +94,7 @@ window.addEventListener('DOMContentLoaded', () => {
   initLucide();
   setupTabNavigation();
   setupEventListeners();
+  setupSidebarToggle();
   checkAuthentication();
 });
 
@@ -1760,4 +1761,43 @@ function exportToCsv(filename, dataRows) {
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+}
+
+// Sidebar collapse/expand functionality
+function setupSidebarToggle() {
+  const container = document.querySelector('.app-container');
+  const toggleBtn = document.getElementById('btn-toggle-sidebar');
+  if (!toggleBtn || !container) return;
+  
+  // Load saved state from localStorage
+  const isCollapsed = localStorage.getItem('sidebar_collapsed') === 'true';
+  if (isCollapsed) {
+    container.classList.add('sidebar-collapsed');
+    toggleBtn.innerHTML = '<i data-lucide="chevron-right"></i>';
+    toggleBtn.title = "Expandir menú";
+  } else {
+    container.classList.remove('sidebar-collapsed');
+    toggleBtn.innerHTML = '<i data-lucide="chevron-left"></i>';
+    toggleBtn.title = "Colapsar menú";
+  }
+  initLucide();
+  
+  toggleBtn.addEventListener('click', () => {
+    const collapsedNow = container.classList.toggle('sidebar-collapsed');
+    localStorage.setItem('sidebar_collapsed', collapsedNow ? 'true' : 'false');
+    
+    if (collapsedNow) {
+      toggleBtn.innerHTML = '<i data-lucide="chevron-right"></i>';
+      toggleBtn.title = "Expandir menú";
+    } else {
+      toggleBtn.innerHTML = '<i data-lucide="chevron-left"></i>';
+      toggleBtn.title = "Colapsar menú";
+    }
+    initLucide();
+    
+    // Trigger window resize event so Chart.js charts redraw and fit the new content area perfectly
+    setTimeout(() => {
+      window.dispatchEvent(new Event('resize'));
+    }, 300); // Wait for CSS transition
+  });
 }
