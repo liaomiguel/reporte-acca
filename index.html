@@ -259,6 +259,77 @@
               </div>
             </div>
           </div>
+
+          <!-- Summary Table Row -->
+          <div class="charts-row margin-top">
+            <div class="chart-card table-card span-3">
+              <div class="chart-header">
+                <div class="chart-header-title">
+                  <h3><i data-lucide="table-properties"></i> Resumen de Alumnos por Curso</h3>
+                  <p class="subtitle">Detalle consolidado de alumnos inscritos y porcentajes por cada código de curso</p>
+                </div>
+                <button class="btn btn-outline btn-sm" id="btn-export-general-summary">
+                  <i data-lucide="download"></i> Exportar Resumen
+                </button>
+              </div>
+              <!-- Table Control Bar with dynamic filters -->
+              <div class="table-control-bar">
+                <div class="table-actions" style="width: 100%; justify-content: flex-start; gap: 16px; flex-wrap: wrap;">
+                  <div class="filter-group">
+                    <label for="summary-filter-nivel"><i data-lucide="layers"></i> Nivel:</label>
+                    <select id="summary-filter-nivel" class="select-sm">
+                      <option value="all">Todos los Niveles</option>
+                    </select>
+                  </div>
+                  <div class="filter-group">
+                    <label for="summary-filter-modalidad"><i data-lucide="globe-2"></i> Modalidad:</label>
+                    <select id="summary-filter-modalidad" class="select-sm">
+                      <option value="all">Todas las Modalidades</option>
+                    </select>
+                  </div>
+                  <div class="filter-group">
+                    <label for="summary-filter-tipo"><i data-lucide="tags"></i> Tipo:</label>
+                    <select id="summary-filter-tipo" class="select-sm">
+                      <option value="all">Todos los Tipos</option>
+                    </select>
+                  </div>
+                  <div class="filter-group">
+                    <label for="summary-filter-fecha"><i data-lucide="calendar"></i> Fecha:</label>
+                    <select id="summary-filter-fecha" class="select-sm">
+                      <option value="all">Todas las Fechas</option>
+                    </select>
+                  </div>
+                  <div class="filter-group">
+                    <label for="summary-filter-profesor"><i data-lucide="user"></i> Profesor:</label>
+                    <select id="summary-filter-profesor" class="select-sm">
+                      <option value="all">Todos los Profesores</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div class="table-container">
+                <table class="data-table" id="table-general-summary">
+                  <thead>
+                    <tr>
+                      <th data-sort="code">Código Curso <i class="sort-icon" data-lucide="chevrons-up-down"></i></th>
+                      <th data-sort="tipo">Tipo <i class="sort-icon" data-lucide="chevrons-up-down"></i></th>
+                      <th data-sort="nivel">Nivel <i class="sort-icon" data-lucide="chevrons-up-down"></i></th>
+                      <th data-sort="dia">Día <i class="sort-icon" data-lucide="chevrons-up-down"></i></th>
+                      <th data-sort="fecha">Fecha <i class="sort-icon" data-lucide="chevrons-up-down"></i></th>
+                      <th data-sort="modalidad">Modalidad <i class="sort-icon" data-lucide="chevrons-up-down"></i></th>
+                      <th data-sort="profesor">Profesor <i class="sort-icon" data-lucide="chevrons-up-down"></i></th>
+                      <th data-sort="count">Alumnos <i class="sort-icon desc" data-lucide="chevron-down"></i></th>
+                      <th data-sort="percentage">Porcentaje <i class="sort-icon" data-lucide="chevrons-up-down"></i></th>
+                    </tr>
+                  </thead>
+                  <tbody id="general-summary-tbody">
+                    <!-- Populated dynamically -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
         </section>
 
         <!-- ================= TAB: CONSTRUCTOR PIVOT ================= -->

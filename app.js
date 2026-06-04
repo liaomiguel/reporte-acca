@@ -37,6 +37,17 @@ const state = {
     sortDir: 'desc',
     page: 1,
     pageSize: 15
+  },
+  
+  // Summary Table Configuration
+  summary: {
+    sortBy: 'count',
+    sortDir: 'desc',
+    filterNivel: 'all',
+    filterModalidad: 'all',
+    filterTipo: 'all',
+    filterFecha: 'all',
+    filterProfesor: 'all'
   }
 };
 
@@ -206,6 +217,9 @@ function setupEventListeners() {
 
   // Reload Button
   document.getElementById('btn-reload-file').addEventListener('click', () => {
+    // Clear custom CSV from localStorage to force reloading the default one
+    localStorage.removeItem('acca_custom_csv');
+    localStorage.removeItem('acca_custom_encoding');
     loadDataAutomatically();
   });
 
@@ -233,6 +247,12 @@ function setupEventListeners() {
   });
   document.getElementById('encoding-select').addEventListener('change', (e) => {
     state.encoding = e.target.value;
+    
+    // If there is a custom CSV in localStorage, update its saved encoding
+    if (localStorage.getItem('acca_custom_csv')) {
+      localStorage.setItem('acca_custom_encoding', state.encoding);
+    }
+    
     if (state.rawBuffer) {
       decodeAndProcessCsv(state.rawBuffer);
     } else {
@@ -360,13 +380,115 @@ function setupEventListeners() {
   document.getElementById('btn-export-builder').addEventListener('click', () => {
     exportBuilderPivotData();
   });
+
+  // Export general summary table to CSV
+  document.getElementById('btn-export-general-summary').addEventListener('click', () => {
+    const courses = getFilteredSummaryCourses();
+    const total = state.filteredRecords.length;
+    if (courses.length === 0) {
+      alert("No hay datos para exportar.");
+      return;
+    }
+    
+    // Map to export format
+    const exportData = courses.map(c => ({
+      "Código Curso": c.code,
+      "Tipo": c.tipo,
+      "Nivel": c.nivel,
+      "Día": c.dia,
+      "Fecha": c.fecha,
+      "Modalidad": c.modalidad,
+      "Profesor": c.profesor,
+      "Alumnos": c.count,
+      "Porcentaje": `${((c.count / total) * 100).toFixed(1)}%`
+    }));
+    
+    exportToCsv('resumen_alumnos_por_curso.csv', exportData);
+  });
+
+  // Summary Table filters dropdown listeners
+  document.getElementById('summary-filter-nivel').addEventListener('change', (e) => {
+    state.summary.filterNivel = e.target.value;
+    renderGeneralSummaryTable();
+  });
+  document.getElementById('summary-filter-modalidad').addEventListener('change', (e) => {
+    state.summary.filterModalidad = e.target.value;
+    renderGeneralSummaryTable();
+  });
+  document.getElementById('summary-filter-tipo').addEventListener('change', (e) => {
+    state.summary.filterTipo = e.target.value;
+    renderGeneralSummaryTable();
+  });
+  document.getElementById('summary-filter-fecha').addEventListener('change', (e) => {
+    state.summary.filterFecha = e.target.value;
+    renderGeneralSummaryTable();
+  });
+  document.getElementById('summary-filter-profesor').addEventListener('change', (e) => {
+    state.summary.filterProfesor = e.target.value;
+    renderGeneralSummaryTable();
+  });
+
+  // Summary Table sorting headers listeners
+  const summaryHeaders = document.querySelectorAll('#table-general-summary th[data-sort]');
+  summaryHeaders.forEach(header => {
+    header.addEventListener('click', () => {
+      const field = header.getAttribute('data-sort');
+      if (state.summary.sortBy === field) {
+        state.summary.sortDir = state.summary.sortDir === 'asc' ? 'desc' : 'asc';
+      } else {
+        state.summary.sortBy = field;
+        state.summary.sortDir = 'asc';
+      }
+      
+      // Update visual icon classes
+      summaryHeaders.forEach(h => {
+        const icon = h.querySelector('.sort-icon');
+        if (h === header) {
+          icon.setAttribute('data-lucide', state.summary.sortDir === 'asc' ? 'chevron-up' : 'chevron-down');
+        } else {
+          icon.setAttribute('data-lucide', 'chevrons-up-down');
+        }
+      });
+      initLucide();
+      
+      renderGeneralSummaryTable();
+    });
+  });
 }
 
-// Fetch CSV automatically from workspace folder
+// Fetch CSV automatically from workspace folder or localStorage
 async function loadDataAutomatically() {
   updateStatus('pulse yellow', 'Intentando cargar CSV...');
+  
+  // Check if there is a saved CSV in localStorage
+  const savedCsv = localStorage.getItem('acca_custom_csv');
+  const savedEncoding = localStorage.getItem('acca_custom_encoding') || 'UTF-8';
+  
+  if (savedCsv) {
+    try {
+      state.encoding = savedEncoding;
+      document.getElementById('encoding-select').value = savedEncoding;
+      state.rawCsvText = savedCsv;
+      
+      // Convert string to arrayBuffer for compatibility with encoding changes
+      const encoder = new TextEncoder();
+      state.rawBuffer = encoder.encode(savedCsv).buffer;
+      processCsvContent(savedCsv);
+      
+      // Hide upload zone as custom CSV succeeded
+      document.getElementById('upload-zone').classList.add('hidden');
+      updateStatus('green pulse', 'Carga de base guardada completada');
+      return;
+    } catch (e) {
+      console.error("Error loading saved CSV:", e);
+      localStorage.removeItem('acca_custom_csv');
+      localStorage.removeItem('acca_custom_encoding');
+    }
+  }
+
+  // Fallback to default CSV
   try {
-    // Vite will serve files in workspace directory
+    // Vite will serve files in workspace directory (moved to public/Alumnos-Acca.csv)
     const response = await fetch('./Alumnos-Acca.csv');
     if (!response.ok) {
       throw new Error(`HTTP error ${response.status}`);
@@ -395,6 +517,19 @@ function readLocalFile(file) {
   reader.onload = (e) => {
     const arrayBuffer = e.target.result;
     decodeAndProcessCsv(arrayBuffer);
+    
+    // Save to localStorage if size is reasonable (up to ~4.5MB)
+    try {
+      const decoder = new TextDecoder(state.encoding);
+      const text = decoder.decode(arrayBuffer);
+      localStorage.setItem('acca_custom_csv', text);
+      localStorage.setItem('acca_custom_encoding', state.encoding);
+    } catch (err) {
+      console.warn("Could not save to localStorage (file might be too large):", err);
+      if (err.name === 'QuotaExceededError') {
+        alert("El archivo es demasiado grande para guardarse de forma permanente en el navegador. Se ha cargado solo para esta sesión.");
+      }
+    }
     
     // Success - hide drop zone
     document.getElementById('upload-zone').classList.add('hidden');
@@ -531,6 +666,10 @@ function updateDashboardData() {
   renderCursosChart();
   renderNivelesChart();
   renderProfesorFechaChart();
+  
+  // Render Tab 1 Summary Table
+  populateSummaryDropdownFilters();
+  renderGeneralSummaryTable();
   
   // Initialize/Refresh Tab 2 Builder
   resetPivotBuilder();
@@ -820,6 +959,181 @@ function renderProfesorFechaChart() {
         }
       }
     }
+  });
+}
+
+// Get summary table courses filtered and sorted
+function getFilteredSummaryCourses() {
+  const records = state.filteredRecords;
+  const total = records.length;
+  
+  // Aggregate by Código
+  const coursesMap = {};
+  records.forEach(row => {
+    const code = row.Código;
+    if (!code) return;
+    
+    if (!coursesMap[code]) {
+      coursesMap[code] = {
+        code: code,
+        tipo: row.Tipo || '-',
+        nivel: row.Nivel || '-',
+        dia: row.Día || '-',
+        fecha: row.Fecha || '-',
+        modalidad: row.Modalidad || '-',
+        profesor: row.Profesor || '-',
+        count: 0
+      };
+    }
+    coursesMap[code].count++;
+  });
+  
+  let coursesArray = Object.values(coursesMap);
+  
+  // Apply Filters
+  if (state.summary.filterNivel !== 'all') {
+    coursesArray = coursesArray.filter(c => c.nivel === state.summary.filterNivel);
+  }
+  if (state.summary.filterModalidad !== 'all') {
+    coursesArray = coursesArray.filter(c => c.modalidad === state.summary.filterModalidad);
+  }
+  if (state.summary.filterTipo !== 'all') {
+    coursesArray = coursesArray.filter(c => c.tipo === state.summary.filterTipo);
+  }
+  if (state.summary.filterFecha !== 'all') {
+    coursesArray = coursesArray.filter(c => c.fecha === state.summary.filterFecha);
+  }
+  if (state.summary.filterProfesor !== 'all') {
+    coursesArray = coursesArray.filter(c => c.profesor === state.summary.filterProfesor);
+  }
+  
+  // Apply Sorting
+  const sortBy = state.summary.sortBy;
+  const sortDir = state.summary.sortDir;
+  
+  coursesArray.sort((a, b) => {
+    let valA = a[sortBy];
+    let valB = b[sortBy];
+    
+    if (sortBy === 'percentage') {
+      valA = a.count;
+      valB = b.count;
+    }
+    
+    let comparison = 0;
+    if (typeof valA === 'number' && typeof valB === 'number') {
+      comparison = valA - valB;
+    } else {
+      comparison = String(valA).localeCompare(String(valB), 'es', { sensitivity: 'base' });
+    }
+    
+    return sortDir === 'asc' ? comparison : -comparison;
+  });
+  
+  return coursesArray;
+}
+
+// Populate the summary table dynamic filter dropdowns
+function populateSummaryDropdownFilters() {
+  const nivelSelect = document.getElementById('summary-filter-nivel');
+  const modSelect = document.getElementById('summary-filter-modalidad');
+  const tipoSelect = document.getElementById('summary-filter-tipo');
+  const fechaSelect = document.getElementById('summary-filter-fecha');
+  const profSelect = document.getElementById('summary-filter-profesor');
+  
+  if (!nivelSelect) return;
+  
+  const uniqueNiveles = new Set();
+  const uniqueModalidades = new Set();
+  const uniqueTipos = new Set();
+  const uniqueFechas = new Set();
+  const uniqueProfesores = new Set();
+  
+  state.filteredRecords.forEach(row => {
+    if (row.Nivel) uniqueNiveles.add(row.Nivel);
+    if (row.Modalidad) uniqueModalidades.add(row.Modalidad);
+    if (row.Tipo) uniqueTipos.add(row.Tipo);
+    if (row.Fecha) uniqueFechas.add(row.Fecha);
+    if (row.Profesor) uniqueProfesores.add(row.Profesor);
+  });
+  
+  const currentNivel = state.summary.filterNivel;
+  const currentMod = state.summary.filterModalidad;
+  const currentTipo = state.summary.filterTipo;
+  const currentFecha = state.summary.filterFecha;
+  const currentProf = state.summary.filterProfesor;
+  
+  nivelSelect.innerHTML = '<option value="all">Todos los Niveles</option>';
+  Array.from(uniqueNiveles).sort().forEach(val => {
+    nivelSelect.innerHTML += `<option value="${val}">${val}</option>`;
+  });
+  
+  modSelect.innerHTML = '<option value="all">Todas las Modalidades</option>';
+  Array.from(uniqueModalidades).sort().forEach(val => {
+    modSelect.innerHTML += `<option value="${val}">${val}</option>`;
+  });
+  
+  tipoSelect.innerHTML = '<option value="all">Todos los Tipos</option>';
+  Array.from(uniqueTipos).sort().forEach(val => {
+    tipoSelect.innerHTML += `<option value="${val}">${val}</option>`;
+  });
+  
+  fechaSelect.innerHTML = '<option value="all">Todas las Fechas</option>';
+  Array.from(uniqueFechas).sort().forEach(val => {
+    const parts = val.split('-');
+    const formatted = parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : val;
+    fechaSelect.innerHTML += `<option value="${val}">${formatted}</option>`;
+  });
+  
+  profSelect.innerHTML = '<option value="all">Todos los Profesores</option>';
+  Array.from(uniqueProfesores).sort().forEach(val => {
+    profSelect.innerHTML += `<option value="${val}">${val}</option>`;
+  });
+  
+  // Keep values if they still exist in new dataset
+  state.summary.filterNivel = uniqueNiveles.has(currentNivel) ? currentNivel : 'all';
+  state.summary.filterModalidad = uniqueModalidades.has(currentMod) ? currentMod : 'all';
+  state.summary.filterTipo = uniqueTipos.has(currentTipo) ? currentTipo : 'all';
+  state.summary.filterFecha = uniqueFechas.has(currentFecha) ? currentFecha : 'all';
+  state.summary.filterProfesor = uniqueProfesores.has(currentProf) ? currentProf : 'all';
+  
+  nivelSelect.value = state.summary.filterNivel;
+  modSelect.value = state.summary.filterModalidad;
+  tipoSelect.value = state.summary.filterTipo;
+  fechaSelect.value = state.summary.filterFecha;
+  profSelect.value = state.summary.filterProfesor;
+}
+
+// Render General Summary Table at the bottom of Resumen General tab
+function renderGeneralSummaryTable() {
+  const tbody = document.getElementById('general-summary-tbody');
+  if (!tbody) return;
+  
+  const coursesArray = getFilteredSummaryCourses();
+  const total = state.filteredRecords.length;
+  
+  if (coursesArray.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="9" class="text-center text-muted py-4">No hay datos que coincidan con los filtros seleccionados.</td></tr>`;
+    return;
+  }
+  
+  // Render table rows
+  tbody.innerHTML = '';
+  coursesArray.forEach(course => {
+    const percentage = total > 0 ? ((course.count / total) * 100).toFixed(1) : '0.0';
+    tbody.innerHTML += `
+      <tr>
+        <td><code class="date-badge">${course.code}</code></td>
+        <td>${course.tipo}</td>
+        <td>${course.nivel}</td>
+        <td>${course.dia}</td>
+        <td><strong>${course.fecha}</strong></td>
+        <td>${course.modalidad}</td>
+        <td>${course.profesor}</td>
+        <td><strong>${course.count}</strong></td>
+        <td><span class="date-badge">${percentage}%</span></td>
+      </tr>
+    `;
   });
 }
 
@@ -1429,7 +1743,7 @@ function exportToCsv(filename, dataRows) {
   // Data rows
   dataRows.forEach(row => {
     const rowValues = keys.map(k => {
-      let val = row[k] || '';
+      let val = row[k] !== undefined && row[k] !== null ? String(row[k]) : '';
       val = val.replace(/"/g, '""');
       return `"${val}"`;
     });
