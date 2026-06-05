@@ -1,6 +1,6 @@
 /**
  * ACCA Student Dashboard - Core Application Logic
- * Implements CSV loading, strict date filtering (>= 2026-06-06),
+ * Implements CSV loading, strict date filtering (>= 2026-01-01),
  * pre-built analytical charts, drag-and-drop pivot builder, and table explorer.
  */
 
@@ -9,7 +9,7 @@ const state = {
   rawCsvText: '',
   rawBuffer: null,
   encoding: 'UTF-8',
-  startDateFilter: '2026-06-06',
+  startDateFilter: '2026-01-01',
   records: [],         // All parsed records (sanitized)
   filteredRecords: [], // Filtered records (Fecha >= startDateFilter)
   
@@ -163,7 +163,7 @@ function handleLogin(e) {
   // In Vite, environment variables are loaded via import.meta.env
   // Provide safe fallback credentials in case .env is missing or not configured
   const expectedUser = import.meta.env.VITE_DASHBOARD_USER || 'admin';
-  const expectedPass = import.meta.env.VITE_DASHBOARD_PASSWORD || 'acca_admin_2026';
+  const expectedPass = import.meta.env.VITE_DASHBOARD_PASSWORD || 'acca2026';
 
   if (usernameInput === expectedUser && passwordInput === expectedPass) {
     errorMsg.classList.add('hidden');
@@ -211,7 +211,7 @@ function setupTabNavigation() {
       // Update page title/subtitle
       if (targetTab === 'general') {
         pageTitle.textContent = 'Resumen General';
-        pageSubtitle.textContent = 'Análisis de inscripciones y distribución de alumnos a partir del 6 de Junio de 2026';
+        pageSubtitle.textContent = 'Análisis de inscripciones y distribución de alumnos a partir del 1 de Enero de 2026';
       } else if (targetTab === 'builder') {
         pageTitle.textContent = 'Constructor Pivot';
         pageSubtitle.textContent = 'Arrastra campos para cruzar variables, contar alumnos y generar reportes dinámicos';
@@ -221,7 +221,7 @@ function setupTabNavigation() {
         }
       } else if (targetTab === 'explorer') {
         pageTitle.textContent = 'Explorador de Datos';
-        pageSubtitle.textContent = 'Listado y búsqueda de todos los alumnos registrados (Filtrado para fechas ≥ 06/06/2026)';
+        pageSubtitle.textContent = 'Listado y búsqueda de todos los alumnos registrados (Filtrado para fechas ≥ 01/01/2026)';
       }
     });
   });
