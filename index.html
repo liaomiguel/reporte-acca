@@ -10,6 +10,11 @@
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <!-- CSS Stylesheet -->
   <link rel="stylesheet" href="style.css">
+  <script>
+    // Inmediatamente aplicar el tema guardado para evitar flash visual
+    const savedTheme = localStorage.getItem('dashboard_theme') || 'light';
+    document.documentElement.setAttribute('data-theme', savedTheme);
+  </script>
   <!-- CDNs for interactive features -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
@@ -132,6 +137,11 @@
               <option value="ISO-8859-1">Windows-1252 / ISO (Español)</option>
             </select>
           </div>
+          
+          <!-- Theme Toggle Button -->
+          <button class="btn btn-outline" id="btn-toggle-theme" title="Cambiar tema (Claro / Oscuro)">
+            <i data-lucide="moon" id="theme-icon"></i>
+          </button>
           
           <button class="btn btn-outline" id="btn-reload-file" title="Recargar archivo base local">
             <i data-lucide="refresh-cw"></i>

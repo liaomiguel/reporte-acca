@@ -84,6 +84,31 @@ const chartBorderColors = [
   '#5c62f5', '#9d4edd', '#10b981', '#f59e0b', '#06b6d4', '#ec4899', '#f43f5e', '#6366f1', '#a855f7', '#22c55e', '#eab308', '#0ea5e9'
 ];
 
+// Helper to get active theme-dependent colors for Chart.js
+function getThemeColors() {
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  return {
+    grid: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.06)',
+    ticks: isDark ? '#9ca3af' : '#475569',
+    text: isDark ? '#f3f4f6' : '#1e293b',
+    border: isDark ? '#0f111a' : '#ffffff',
+    tooltipBg: isDark ? 'rgba(15, 17, 26, 0.95)' : 'rgba(255, 255, 255, 0.98)',
+    tooltipBorder: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.08)',
+    tooltipText: isDark ? '#f3f4f6' : '#1e293b',
+    tooltipTitle: isDark ? '#ffffff' : '#0f172a'
+  };
+}
+
+// Helper to update theme toggle button icon
+function updateThemeIcon() {
+  const themeIcon = document.getElementById('theme-icon');
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  if (themeIcon) {
+    themeIcon.setAttribute('data-lucide', isDark ? 'sun' : 'moon');
+    initLucide(); // Refresh icons
+  }
+}
+
 // Register Chart.js DataLabels plugin globally if available
 if (typeof ChartDataLabels !== 'undefined') {
   Chart.register(ChartDataLabels);
@@ -214,6 +239,27 @@ function setupEventListeners() {
   const logoutBtn = document.getElementById('btn-logout');
   if (logoutBtn) {
     logoutBtn.addEventListener('click', handleLogout);
+  }
+
+  // Theme Toggle Button
+  const toggleThemeBtn = document.getElementById('btn-toggle-theme');
+  if (toggleThemeBtn) {
+    updateThemeIcon();
+    toggleThemeBtn.addEventListener('click', () => {
+      const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
+      const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', newTheme);
+      localStorage.setItem('dashboard_theme', newTheme);
+      updateThemeIcon();
+      
+      // Re-render charts
+      if (state.filteredRecords.length > 0) {
+        renderCursosChart();
+        renderNivelesChart();
+        renderProfesorFechaChart();
+        updateBuilderVisualization();
+      }
+    });
   }
 
   // Reload Button
@@ -745,6 +791,7 @@ function renderCursosChart() {
   const data = sorted.map(x => x[1]);
   
   const ctx = document.getElementById('chart-cursos').getContext('2d');
+  const colors = getThemeColors();
   
   state.charts.cursos = new Chart(ctx, {
     type: 'bar',
@@ -776,21 +823,23 @@ function renderCursosChart() {
         },
         tooltip: {
           padding: 12,
-          backgroundColor: 'rgba(15, 17, 26, 0.95)',
+          backgroundColor: colors.tooltipBg,
+          titleColor: colors.tooltipTitle,
+          bodyColor: colors.tooltipText,
+          borderColor: colors.tooltipBorder,
+          borderWidth: 1,
           titleFont: { family: 'Outfit', size: 13 },
-          bodyFont: { family: 'Outfit', size: 12 },
-          borderColor: 'rgba(255, 255, 255, 0.1)',
-          borderWidth: 1
+          bodyFont: { family: 'Outfit', size: 12 }
         }
       },
       scales: {
         x: {
-          grid: { color: 'rgba(255, 255, 255, 0.05)' },
-          ticks: { color: '#9ca3af', font: { family: 'Outfit' } }
+          grid: { color: colors.grid },
+          ticks: { color: colors.ticks, font: { family: 'Outfit' } }
         },
         y: {
           grid: { display: false },
-          ticks: { color: '#f3f4f6', font: { family: 'Outfit', size: 11 } }
+          ticks: { color: colors.ticks, font: { family: 'Outfit', size: 11 } }
         }
       }
     }
@@ -816,6 +865,7 @@ function renderNivelesChart() {
   const data = sorted.map(x => x[1]);
   
   const ctx = document.getElementById('chart-niveles').getContext('2d');
+  const colors = getThemeColors();
   
   state.charts.niveles = new Chart(ctx, {
     type: 'doughnut',
@@ -824,7 +874,7 @@ function renderNivelesChart() {
       datasets: [{
         data: data,
         backgroundColor: chartColors.slice(0, labels.length),
-        borderColor: '#0f111a',
+        borderColor: colors.border,
         borderWidth: 2,
         hoverOffset: 12
       }]
@@ -836,7 +886,7 @@ function renderNivelesChart() {
         legend: {
           position: 'right',
           labels: {
-            color: '#f3f4f6',
+            color: colors.text,
             font: { family: 'Outfit', size: 12 },
             padding: 16
           }
@@ -855,11 +905,13 @@ function renderNivelesChart() {
         },
         tooltip: {
           padding: 12,
-          backgroundColor: 'rgba(15, 17, 26, 0.95)',
+          backgroundColor: colors.tooltipBg,
+          titleColor: colors.tooltipTitle,
+          bodyColor: colors.tooltipText,
+          borderColor: colors.tooltipBorder,
+          borderWidth: 1,
           titleFont: { family: 'Outfit', size: 13 },
           bodyFont: { family: 'Outfit', size: 12 },
-          borderColor: 'rgba(255, 255, 255, 0.1)',
-          borderWidth: 1,
           callbacks: {
             label: function(context) {
               const val = context.raw;
@@ -905,6 +957,7 @@ function renderProfesorFechaChart() {
   const data = sorted.map(x => x[1]);
   
   const ctx = document.getElementById('chart-profesor-fecha').getContext('2d');
+  const colors = getThemeColors();
   
   state.charts.profesorFecha = new Chart(ctx, {
     type: 'line',
@@ -919,10 +972,10 @@ function renderProfesorFechaChart() {
         fill: true,
         tension: 0.35,
         pointBackgroundColor: '#9d4edd',
-        pointBorderColor: '#0f111a',
+        pointBorderColor: colors.border,
         pointHoverRadius: 7,
         pointHoverBackgroundColor: '#9d4edd',
-        pointHoverBorderColor: '#fff',
+        pointHoverBorderColor: colors.border,
         pointBorderWidth: 2,
         pointRadius: 4
       }]
@@ -933,7 +986,7 @@ function renderProfesorFechaChart() {
       plugins: {
         legend: { display: false },
         datalabels: {
-          color: '#e2e8f0',
+          color: colors.ticks,
           anchor: 'end',
           align: 'top',
           offset: 4,
@@ -948,21 +1001,23 @@ function renderProfesorFechaChart() {
         },
         tooltip: {
           padding: 12,
-          backgroundColor: 'rgba(15, 17, 26, 0.95)',
+          backgroundColor: colors.tooltipBg,
+          titleColor: colors.tooltipTitle,
+          bodyColor: colors.tooltipText,
+          borderColor: colors.tooltipBorder,
+          borderWidth: 1,
           titleFont: { family: 'Outfit', size: 13 },
-          bodyFont: { family: 'Outfit', size: 12 },
-          borderColor: 'rgba(255, 255, 255, 0.1)',
-          borderWidth: 1
+          bodyFont: { family: 'Outfit', size: 12 }
         }
       },
       scales: {
         x: {
-          grid: { color: 'rgba(255, 255, 255, 0.05)' },
-          ticks: { color: '#9ca3af', font: { family: 'Outfit' }, maxRotation: 45 }
+          grid: { color: colors.grid },
+          ticks: { color: colors.ticks, font: { family: 'Outfit' }, maxRotation: 45 }
         },
         y: {
-          grid: { color: 'rgba(255, 255, 255, 0.05)' },
-          ticks: { color: '#9ca3af', font: { family: 'Outfit' } },
+          grid: { color: colors.grid },
+          ticks: { color: colors.ticks, font: { family: 'Outfit' } },
           min: 0
         }
       }
@@ -1336,6 +1391,7 @@ function updateBuilderVisualization() {
     // Render Chart
     const ctx = canvasEl.getContext('2d');
     const isPie = state.builder.chartType === 'pie';
+    const colors = getThemeColors();
     
     state.charts.builder = new Chart(ctx, {
       type: isPie ? 'doughnut' : (state.builder.chartType === 'horizontalBar' ? 'bar' : state.builder.chartType),
@@ -1345,7 +1401,7 @@ function updateBuilderVisualization() {
           label: 'Alumnos',
           data: data,
           backgroundColor: isPie ? chartColors.slice(0, labels.length) : 'rgba(92, 98, 245, 0.5)',
-          borderColor: isPie ? '#0f111a' : '#5c62f5',
+          borderColor: isPie ? colors.border : '#5c62f5',
           borderWidth: 2,
           borderRadius: isPie ? 0 : 5
         }]
@@ -1355,7 +1411,7 @@ function updateBuilderVisualization() {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: { display: isPie, position: 'right', labels: { color: '#f3f4f6', font: { family: 'Outfit' } } },
+          legend: { display: isPie, position: 'right', labels: { color: colors.text, font: { family: 'Outfit' } } },
           datalabels: {
             color: '#ffffff',
             font: { family: 'Outfit', weight: 'bold', size: 10 },
@@ -1387,8 +1443,8 @@ function updateBuilderVisualization() {
           }
         },
         scales: isPie ? {} : {
-          x: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#9ca3af', font: { family: 'Outfit' } } },
-          y: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#9ca3af', font: { family: 'Outfit' } }, min: 0 }
+          x: { grid: { color: colors.grid }, ticks: { color: colors.ticks, font: { family: 'Outfit' } } },
+          y: { grid: { color: colors.grid }, ticks: { color: colors.ticks, font: { family: 'Outfit' } }, min: 0 }
         }
       }
     });
@@ -1467,6 +1523,7 @@ function updateBuilderVisualization() {
     if (chartType === 'pie') {
       chartType = 'bar'; // Pie doesn't support stacked pivot data, fallback to bar
     }
+    const colors = getThemeColors();
     
     state.charts.builder = new Chart(ctx, {
       type: chartType === 'horizontalBar' ? 'bar' : chartType,
@@ -1479,7 +1536,7 @@ function updateBuilderVisualization() {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: { display: true, position: 'top', labels: { color: '#f3f4f6', font: { family: 'Outfit' } } },
+          legend: { display: true, position: 'top', labels: { color: colors.text, font: { family: 'Outfit' } } },
           datalabels: {
             color: '#ffffff',
             font: { family: 'Outfit', weight: 'bold', size: 9 },
@@ -1497,13 +1554,13 @@ function updateBuilderVisualization() {
         scales: {
           x: { 
             stacked: true, 
-            grid: { color: 'rgba(255, 255, 255, 0.05)' }, 
-            ticks: { color: '#9ca3af', font: { family: 'Outfit' } } 
+            grid: { color: colors.grid }, 
+            ticks: { color: colors.ticks, font: { family: 'Outfit' } } 
           },
           y: { 
             stacked: true, 
-            grid: { color: 'rgba(255, 255, 255, 0.05)' }, 
-            ticks: { color: '#9ca3af', font: { family: 'Outfit' } }, 
+            grid: { color: colors.grid }, 
+            ticks: { color: colors.ticks, font: { family: 'Outfit' } }, 
             min: 0 
           }
         }
