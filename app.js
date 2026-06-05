@@ -232,12 +232,6 @@ function setupEventListeners() {
   // Date Filter Picker Change
   document.getElementById('filter-date-input').addEventListener('change', (e) => {
     state.startDateFilter = e.target.value;
-    
-    // Update sidebar display
-    const parts = state.startDateFilter.split('-');
-    const formattedDate = parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : state.startDateFilter;
-    document.getElementById('status-filter-date').textContent = `≥ ${formattedDate}`;
-    
     // Re-filter and update
     filterAndRefreshData();
   });
@@ -643,6 +637,20 @@ function updateDashboardData() {
   const count = state.filteredRecords.length;
   document.getElementById('record-count').textContent = count;
   document.getElementById('kpi-alumnos').textContent = count;
+  
+  // Update date displays dynamically based on the current filter date
+  const parts = state.startDateFilter.split('-');
+  const formattedDate = parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : state.startDateFilter;
+  
+  const kpiDateEl = document.getElementById('kpi-alumnos-date');
+  if (kpiDateEl) {
+    kpiDateEl.textContent = formattedDate;
+  }
+  
+  const statusDateEl = document.getElementById('status-filter-date');
+  if (statusDateEl) {
+    statusDateEl.textContent = `≥ ${formattedDate}`;
+  }
   
   // Compute unique values
   const uniqueCursos = new Set();
