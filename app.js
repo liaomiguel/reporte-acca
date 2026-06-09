@@ -322,6 +322,8 @@ function setupEventListeners() {
     if (file) {
       readLocalFile(file);
     }
+    // Reset value so re-selecting the same file triggers change event again
+    e.target.value = '';
   });
 
   // Setup Drag & Drop files on upload zone
@@ -573,7 +575,11 @@ function readLocalFile(file) {
     
     // Success - hide drop zone
     document.getElementById('upload-zone').classList.add('hidden');
-    updateStatus('green pulse', 'Archivo manual cargado');
+    updateStatus('green pulse', `CSV importado: ${state.filteredRecords.length} registros cargados`);
+    
+    // Switch to Resumen General tab to show the imported data immediately
+    const generalTab = document.querySelector('.nav-btn[data-tab="general"]');
+    if (generalTab) generalTab.click();
   };
   
   reader.onerror = () => {
@@ -599,6 +605,40 @@ function updateStatus(dotClass, text) {
   const statusText = document.getElementById('status-text');
   statusDot.className = `dot ${dotClass}`;
   statusText.textContent = text;
+}
+
+// Normalize a date string to YYYY-MM-DD (ISO) format
+// Supports: DD/MM/YYYY, D/M/YYYY, DD-MM-YYYY, D-M-YYYY, and already ISO YYYY-MM-DD
+function normalizeDateToISO(dateStr) {
+  if (!dateStr) return dateStr;
+  
+  // Already in YYYY-MM-DD format
+  if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(dateStr)) {
+    // Ensure zero-padded: 2026-1-5 → 2026-01-05
+    const parts = dateStr.split('-');
+    return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+  }
+  
+  // DD/MM/YYYY or D/M/YYYY format (slash separator)
+  const slashMatch = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slashMatch) {
+    const day = slashMatch[1].padStart(2, '0');
+    const month = slashMatch[2].padStart(2, '0');
+    const year = slashMatch[3];
+    return `${year}-${month}-${day}`;
+  }
+  
+  // DD-MM-YYYY or D-M-YYYY format (dash separator, day first)
+  const dashMatch = dateStr.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (dashMatch) {
+    const day = dashMatch[1].padStart(2, '0');
+    const month = dashMatch[2].padStart(2, '0');
+    const year = dashMatch[3];
+    return `${year}-${month}-${day}`;
+  }
+  
+  // Unknown format — return as-is
+  return dateStr;
 }
 
 // Core business logic: Parse CSV, clean encodings/BOM, apply Date Filters
@@ -660,6 +700,12 @@ function processCsvContent(csvString) {
           const cleanKey = key.trim();
           sanitized[cleanKey] = row[key] ? row[key].trim() : '';
         }
+        
+        // Normalize Fecha to YYYY-MM-DD format if it's in DD/MM/YYYY or D/M/YYYY
+        if (sanitized.Fecha) {
+          sanitized.Fecha = normalizeDateToISO(sanitized.Fecha);
+        }
+        
         return sanitized;
       });
       
@@ -671,6 +717,22 @@ function processCsvContent(csvString) {
 
 // Filter records based on state date and refresh metrics
 function filterAndRefreshData() {
+  // Reset explorer and summary filters when data changes, so new data isn't hidden
+  state.explorer.search = '';
+  state.explorer.filterNivel = 'all';
+  state.explorer.filterProfesor = 'all';
+  state.explorer.page = 1;
+  
+  state.summary.filterNivel = 'all';
+  state.summary.filterModalidad = 'all';
+  state.summary.filterTipo = 'all';
+  state.summary.filterFecha = 'all';
+  state.summary.filterProfesor = 'all';
+  
+  // Clear UI filter inputs
+  const explorerSearch = document.getElementById('explorer-search');
+  if (explorerSearch) explorerSearch.value = '';
+  
   state.filteredRecords = state.records.filter(row => {
     const fecha = row.Fecha;
     return fecha && fecha >= state.startDateFilter;

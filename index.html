@@ -149,10 +149,12 @@
         </div>
       </header>
 
+      <!-- Hidden File Input (must be outside upload-zone so it's always clickable) -->
+      <input type="file" id="csv-file-input" accept=".csv" class="hidden-file-input">
+
       <!-- Drag & Drop Uploader (Fallback / Manual load) -->
       <section class="upload-section hidden" id="upload-zone">
         <div class="upload-card">
-          <input type="file" id="csv-file-input" accept=".csv" class="hidden-file-input">
           <div class="upload-icon-container">
             <i data-lucide="upload-cloud" class="upload-icon"></i>
           </div>
